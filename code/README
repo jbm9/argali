@@ -1,0 +1,3 @@
+# Firmware source code
+
+To compile, run `make` in the directory above this.
