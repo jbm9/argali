@@ -1,9 +1,3 @@
-.skel
-=====
+# argali
 
-This is a skeleton project.  It needs better documentation.
-
-Contents:
-
-web/ -- An empty website for this thing
-code/ -- An empty directory for code for this thing
+Argali is a template to make STM32 projects easy to start cleanly.
