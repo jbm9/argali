@@ -77,11 +77,11 @@ tamo_emotion_t tamo_state_compute_next(tamo_emotion_t current_emotion, int32_t d
     break;
 
   case TAMO_HAPPY:
-    // The person left while we were still happy.  Go straight to lonely.
-    if (!user_present) return TAMO_LONELY;
-
     // If they've been around too long, we'll get bored
     if (dt > TAMO_INTERACTION_TIMEOUT) return TAMO_BORED;
+
+    // The person left while we were still happy.  Go straight to lonely.
+    if (!user_present) return TAMO_LONELY;
     
     // Otherwise, we stay happy
     return TAMO_HAPPY;
@@ -109,23 +109,23 @@ tamo_emotion_t tamo_state_compute_next(tamo_emotion_t current_emotion, int32_t d
  * \param timestamp The timestamp of this latest interaction event
  * \param user_present Whether or not a person has been detected
  *
- * \return Whether or not the state was changed
+ * \return Whether or not the emotional state was changed (OR if we went back in time without changing emotion)
  */
 bool tamo_state_update(tamo_state_t *tst, uint32_t timestamp, bool user_present) {
   int32_t dt = timestamp - tst->last_timestamp;  //! \todo Check for overflow for exceptionally lonely devboards
 
   tamo_emotion_t next_emotion;
+  bool force_update = false; // If we get an UNKNOWN, force an update
 
   next_emotion = tamo_state_compute_next(tst->current_emotion, dt, user_present);
 
   /* Handle the UNKNOWN state differently than others */
   if (TAMO_UNKNOWN == next_emotion) {
-    next_emotion = TAMO_LONELY; // Just go with LONELY if we don't know.
-    tst->last_timestamp = timestamp;
-    return true;
+    next_emotion = (user_present ? TAMO_HAPPY : TAMO_LONELY); // Just go with LONELY if we don't know.
+    force_update = true;
   }
   
-  if (next_emotion != tst->current_emotion) {
+  if ((next_emotion != tst->current_emotion) || force_update) {
     tst->current_emotion = next_emotion;
     /**
      * \todo Should we set the "last timestamp" on the emotional state
@@ -137,6 +137,11 @@ bool tamo_state_update(tamo_state_t *tst, uint32_t timestamp, bool user_present)
     tst->last_timestamp = timestamp;
     
     return true;
+  }
+
+  // The tamodevboard's introspection has been interrupted!
+  if (user_present && (next_emotion == TAMO_BORED)) {
+    tst->last_timestamp = timestamp;
   }
   
   return false;
