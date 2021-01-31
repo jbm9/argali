@@ -1,1 +1,4 @@
-bin/  # Don't commit binaries by accident
+# Don't commit binaries by accident
+bin/
+schmancy_blink.bin
+schmancy_blink.elf
