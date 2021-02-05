@@ -97,3 +97,5 @@ WORKDIR /code
 # above for more about this.
 
 RUN chmod u+s /usr/bin/openocd
+
+RUN apt-get install -y gcc
