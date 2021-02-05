@@ -1,0 +1,25 @@
+# Because we run the docker with the userid of whoever's running the
+# command, they (usually) don't have an account inside the docker
+# container.  This results in a prompt like
+#
+#  I have no name!@23424f1a23c:/code$
+#
+# Which is distracting and feels broken.  Instead of that, let's just
+# give ourselves a nice clean prompt and a history file.
+
+# It's not possible to actually include this cleanly in the Ubuntu
+# /etc/bash.bashrc (which I think is behavior inherited from the
+# debian one), so we just pull in the key parts from the system
+# bashrc, update the helper script that launches interactive bash in
+# docker to use this as bashrc, and call it a day.
+
+shopt -s checkwinsize
+
+# "$?]" here puts the exit status of the last command in your prompt.
+# This is invaluable when troubleshooting snippets of shell scripts on
+# a manual command line.
+
+export PS1='$?] argali-docker@\h:\w\$ '
+
+# Let's give ourselves a history file while we're in here
+export HISTFILE='/code/.docker_bash_history'

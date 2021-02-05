@@ -2,3 +2,10 @@
 bin/
 schmancy_blink.bin
 schmancy_blink.elf
+
+# Let's also not include build artifacts
+build/
+build_test
+
+# Don't include the docker bash history
+.docker_bash_history
