@@ -14,6 +14,11 @@ strong assumptions:
   however they want.
 * Everything runs from within a Linux machine (or VM)
 
+## License
+
+Aragli is released under the CC0 Licence v1.0,
+https://creativecommons.org/publicdomain/zero/1.0/
+
 
 ## Features
 
