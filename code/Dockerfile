@@ -54,6 +54,23 @@
 # the container, which may allow udev rules to change permissions.
 # However, the need to pass in /dev is mildly terrifying, so I went
 # with this hack.
+#
+# There may also be some concerns with the use of gdbgui.  This is
+# entirely optional, but it is so very, very nice.
+
+
+######################################################################
+# Please note that this Dockerfile is under active development, so its
+# actions are in a weird/suboptimal order.  This is to make the builds
+# reasonably quick while doing development.  If you weren't aware,
+# Docker effectively builds an image at each line, so *appends* are
+# cheap.  It's very neat.
+#
+#
+# Anyway, I may leave it like this, as it helps keep things nicely
+# contained.  Unfortunately, each section was developed right where it
+# is now, so there may be implicit dependencies on prior steps.
+# Apologies if you're trying to develop off of the later subsections.
 
 
 ######################################################################
@@ -99,3 +116,26 @@ WORKDIR /code
 RUN chmod u+s /usr/bin/openocd
 
 RUN apt-get install -y gcc
+
+############################################################
+# Install gdbgui, which is pretty neat
+
+RUN apt-get install -y python3-pip
+RUN pip3 install gdbgui
+EXPOSE 5000
+
+############################################################
+# And build a new cmsis-svd, which is a python package that is
+# constantly being updated with new chips and the occasional
+# bugfix/tweak, but is never re-released.  For five years now.
+
+RUN mkdir /cmsis-svd
+RUN git clone https://github.com/posborne/cmsis-svd/ /cmsis-svd/
+RUN cd /cmsis-svd/python; pip3 install .
+
+# SVD files are the heart of this: they're XML that describes the
+# register sets of chips.  This install worked automagically with pip
+# on my Linux local install, but didn't in Docker, so let's manually
+# copy the data over.
+
+RUN cp -r /cmsis-svd/data/ /usr/local/lib/python3.8/dist-packages/cmsis_svd/
