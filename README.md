@@ -39,3 +39,11 @@ your Linux-side unit tests under `gdb`.
 The docker shell also sets a custom `${HISTFILE}` variable, which
 means that you actually get a bash history inside your docker
 containers that can persist across sessions.
+
+## Code of Conduct
+
+argali uses the "Contributor Covenant" code of conduct (currently
+version 1.3.0).
+
+Please review [CODE_OF_CONDUCT.md] before submitting (computer) code
+to the repository.
