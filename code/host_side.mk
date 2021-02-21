@@ -6,27 +6,39 @@
 # TODO: Implement clang-format
 #
 
-include unity_tests.mk
+# Please note that we do something inside out for unity testing.  This
+# requires a bunch of redefinition of CFLAGS etc, which we'd rather
+# not have changed during the main firmware build.  Because it breaks
+# things.  So instead of including that file here, we instead include
+# the main Makefile in unity's Makefile.
 
+DOCKER_RUN_BASE=docker run --privileged -v $(shell pwd):/code -u $(shell id -u):$(shell id -g)
+DOCKER_RUN=$(DOCKER_RUN_BASE) -it argali
 
-DOCKER_RUN=docker run --privileged -v $(shell pwd):/code -u $(shell id -u):$(shell id -g) -it argali
+OOCD_PORT ?= 4444
 
-.PHONY: indent
 .PHONY: docker-image
 .PHONY: docker-build docker-flash
 .PHONY: docker-test
-
-indent:
-	echo clang-format -i $(PATHS)
 
 docker-image:
 	docker build -t argali -f Dockerfile .
 
 docker-build:
-	$(DOCKER_RUN) make all
+	$(DOCKER_RUN)  make all
 
 docker-flash:
-	$(DOCKER_RUN) make flash
+# TODO You can't currently run this command while the openocd-daemon
+# is running, since it has grabbed $(OOCD_PORT) for its container,
+# which can't be seen from here.  Probably need to add a network for this?
+	$(DOCKER_RUN) make V=$(V) flash
 
 docker-test:
-	$(DOCKER_RUN) make test-unity
+	$(DOCKER_RUN) make -f unity_tests.mk test-unity
+
+docker-openocd-daemon:
+	$(DOCKER_RUN_BASE) --net=host -p 127.0.0.1:$(OOCD_PORT):$(OOCD_PORT) -p 127.0.0.1:3333:3333 -it argali make openocd-daemon
+
+docker-gdbgui:
+# TODO Check that the openocd port is open
+	$(DOCKER_RUN_BASE) --net=host -p 127.0.0.1:5000:5000 -e HOME=/code -it argali gdbgui -g gdb-multiarch --args /code/$(PROJECT).elf

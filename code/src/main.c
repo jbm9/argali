@@ -8,30 +8,19 @@
 #include <libopencm3/stm32/rcc.h>
 #include <libopencm3/stm32/usart.h>
 
+#include "leds.h"
 #include "syscalls.h"
 #include "tamo_state.h"
 
-// LD1: green: PB0
-// LD2: blue: : PB7
-// LD3: red : PB14
-
 // usr button: PC13
-
-static void clock_setup(void) {
-  // Enable LEDs
-  rcc_periph_clock_enable(RCC_GPIOB);
-
-  // Enable button
-  rcc_periph_clock_enable(RCC_GPIOC);
-
-  // Enable USART3
-  rcc_periph_clock_enable(RCC_GPIOD); // USART TX pin
-  rcc_periph_clock_enable(RCC_USART3);
-}
 
 /** Configures USART3 at 115200 8N1
  */
 static void usart_setup(void) {
+  // Enable USART3 clocks
+  rcc_periph_clock_enable(RCC_GPIOD); // USART TX pin
+  rcc_periph_clock_enable(RCC_USART3);
+
   // Connect USART3 TX/RX pins via AF
   gpio_mode_setup(GPIOD, GPIO_MODE_AF, GPIO_PUPD_NONE, GPIO8);
   gpio_mode_setup(GPIOD, GPIO_MODE_AF, GPIO_PUPD_NONE, GPIO7);
@@ -49,25 +38,11 @@ static void usart_setup(void) {
   usart_enable(USART3);
 }
 
-/** Configures our LED GPIOs
- *
- */
-static void gpio_setup(void) {
-  gpio_mode_setup(GPIOB, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, GPIO0);
-  gpio_mode_setup(GPIOB, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, GPIO7);
-  gpio_mode_setup(GPIOB, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, GPIO14);
 
+static void button_setup(void) {
+  rcc_periph_clock_enable(RCC_GPIOC);
   gpio_mode_setup(GPIOC, GPIO_MODE_INPUT, GPIO_PUPD_PULLDOWN, GPIO13);
 }
-
-/** Toggle the red LED
- */
-
-static void led_red_toggle(void) { gpio_toggle(GPIOB, GPIO14); }
-
-/** Toggle the blue LED
- */
-static void led_blue_toggle(void) { gpio_toggle(GPIOB, GPIO7); }
 
 #define CLOCKS_PER_MS 10000
 
@@ -85,15 +60,29 @@ int main(void) {
   uint32_t current_time; //! \todo We still need to hook up the RTC.
   tamo_state_t tamo_state;
 
-  clock_setup();
-  gpio_setup();
   usart_setup();
+  printf("Hello console yo!\n");
+  led_setup();
+  button_setup();
 
   current_time = 0;
   tamo_state_init(&tamo_state, current_time);
 
-  printf("Hello console!\n");
-
+  printf("0\n");
+  led_red_on();
+  printf("1\n");
+  _delay_ms(100);
+  printf("2\n");
+  led_blue_on();
+  _delay_ms(100);
+  led_green_on();
+  _delay_ms(100);
+  led_red_off();
+  _delay_ms(100);
+  led_blue_off();
+  _delay_ms(100);
+  led_green_off();
+  printf("9\n");
   while (1) {
     // Run this loop at about 10Hz, instead of using ISRs like a real programmer
 
@@ -107,13 +96,13 @@ int main(void) {
       }
       switch (tamo_state.current_emotion) {
       case TAMO_LONELY: // blink red at 5Hz when lonely
-        gpio_clear(GPIOB, GPIO7);
-        led_red_toggle();
+	led_blue_off();
+        led_red_on();
         break;
 
       case TAMO_HAPPY: // Solid blue when happy
-        gpio_clear(GPIOB, GPIO14);
-        gpio_set(GPIOB, GPIO7);
+	led_red_off();
+	led_blue_on();
         break;
 
       case TAMO_BORED: // Blink blue at 2Hz when bored

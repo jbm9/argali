@@ -12,6 +12,8 @@
 # an executable named build/test_foo.testrunner, then run it and
 # capture the output in build/results/test_foo.txt.
 
+include Makefile
+
 CLEANUP = rm -f
 MKDIR = mkdir -p
 TARGET_EXTENSION = testrunner
@@ -34,7 +36,7 @@ SRCT = $(wildcard $(PATHT)test_*.c)
 COMPILE=gcc -c
 LINK=gcc
 DEPEND=gcc -MM -MG -MF
-CFLAGS=-I. -I$(PATHU) -I$(PATHS) -g -O0 -DTEST
+CFLAGS=-I. -I$(PATHU) -I$(PATHS) -g -O0 -DTEST_UNITY
 
 RESULTS = $(patsubst $(PATHT)test_%.c,$(PATHR)test_%.txt,$(SRCT) )
 
