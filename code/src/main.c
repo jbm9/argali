@@ -1,3 +1,8 @@
+/**
+ * \file main.c
+ * \brief Main loop and helper functions
+ */
+
 #include <errno.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -14,21 +19,40 @@
 #include "tamo_state.h"
 
 
+ /**
+ * \defgroup mainloop Main loop
+ *
+ * \addtogroup mainloop
+ * \{
+ *
+ * This is the main loop; it runs a busy loop that manages polling for
+ * buttons, cycling through LED states, and occasionally prints stuff
+ * to the console.
+ */
 
 
-#define CLOCKS_PER_MS 10000
+#define CLOCKS_PER_MS 10000 //!< Approximate number of NOP/inc/cmp loop cycles to run to delay a millisecond
 
+/**
+ * \brief A janky, approximate, busy-loop delay function
+ *
+ * \param ms The approximate time to sleep for (in milliseconds)
+ *
+ * Note that this is wildly inadequate for anything but silly sample
+ * code.  It should be using a known-good configuration of the system
+ * clock, and, if used in anything like production code, should
+ * probably have a verification and validation plan.
+ */
 static void _delay_ms(uint16_t ms) {
   //! \todo actually use the clock speed for delays
   for (uint32_t i = 0; i < ms * CLOCKS_PER_MS; i++)
     __asm__("NOP");
 }
 
+/**
+ * \brief The main loop.
+ */
 int main(void) {
-  uint32_t i = 0;
-  uint32_t j = 0;
-  uint8_t c = 0;
-
   uint32_t current_time; //! \todo We still need to hook up the RTC.
   tamo_state_t tamo_state;
 
@@ -40,25 +64,9 @@ int main(void) {
   current_time = 0;
   tamo_state_init(&tamo_state, current_time);
 
-  printf("0\n");
-  led_red_on();
-  printf("1\n");
-  _delay_ms(100);
-  printf("2\n");
-  led_blue_on();
-  _delay_ms(100);
-  led_green_on();
-  _delay_ms(100);
-  led_red_off();
-  _delay_ms(100);
-  led_blue_off();
-  _delay_ms(100);
-  led_green_off();
-  printf("9\n");
   while (1) {
-    // Run this loop at about 10Hz, instead of using ISRs like a real programmer
-
-    for (j = 0; j < 10; j++) {
+    // Run this loop at about 10Hz, and poll for inputs.  (Huge antipattern!)
+    for (int j = 0; j < 10; j++) {
       bool user_present = button_poll();
 
       if (tamo_state_update(&tamo_state, current_time, user_present)) {
@@ -93,3 +101,5 @@ int main(void) {
     current_time++;
   }
 }
+
+/** \} */ // End doxygen group
