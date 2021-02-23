@@ -8,11 +8,11 @@
 #include <libopencm3/stm32/rcc.h>
 #include <libopencm3/stm32/usart.h>
 
+#include "buttons.h"
 #include "leds.h"
 #include "syscalls.h"
 #include "tamo_state.h"
 
-// usr button: PC13
 
 /** Configures USART3 at 115200 8N1
  */
@@ -39,10 +39,6 @@ static void usart_setup(void) {
 }
 
 
-static void button_setup(void) {
-  rcc_periph_clock_enable(RCC_GPIOC);
-  gpio_mode_setup(GPIOC, GPIO_MODE_INPUT, GPIO_PUPD_PULLDOWN, GPIO13);
-}
 
 #define CLOCKS_PER_MS 10000
 
@@ -87,12 +83,11 @@ int main(void) {
     // Run this loop at about 10Hz, instead of using ISRs like a real programmer
 
     for (j = 0; j < 10; j++) {
-      uint16_t button_state = gpio_get(GPIOC, GPIO13);
-      bool user_present = (button_state != 0);
+      bool user_present = button_poll();
 
-      if (tamo_state_update(&tamo_state, current_time, button_state)) {
+      if (tamo_state_update(&tamo_state, current_time, user_present)) {
         printf("Transition to %s: %d\n",
-               tamo_emotion_name(tamo_state.current_emotion), button_state);
+               tamo_emotion_name(tamo_state.current_emotion), user_present);
       }
       switch (tamo_state.current_emotion) {
       case TAMO_LONELY: // blink red at 5Hz when lonely
