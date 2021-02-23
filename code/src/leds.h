@@ -14,7 +14,6 @@
 
 #include <libopencm3/stm32/gpio.h>
 #include <libopencm3/stm32/rcc.h>
-#include <libopencm3/stm32/usart.h>
 
 #define LED_CLOCK RCC_GPIOB  //!< RCC Register for the lock (all LEDs need to be on one port!)
 #define LED_PORT GPIOB       //!< Port all LEDs are connected to
