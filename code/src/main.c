@@ -6,37 +6,13 @@
 
 #include <libopencm3/stm32/gpio.h>
 #include <libopencm3/stm32/rcc.h>
-#include <libopencm3/stm32/usart.h>
 
+#include "console.h"
 #include "buttons.h"
 #include "leds.h"
 #include "syscalls.h"
 #include "tamo_state.h"
 
-
-/** Configures USART3 at 115200 8N1
- */
-static void usart_setup(void) {
-  // Enable USART3 clocks
-  rcc_periph_clock_enable(RCC_GPIOD); // USART TX pin
-  rcc_periph_clock_enable(RCC_USART3);
-
-  // Connect USART3 TX/RX pins via AF
-  gpio_mode_setup(GPIOD, GPIO_MODE_AF, GPIO_PUPD_NONE, GPIO8);
-  gpio_mode_setup(GPIOD, GPIO_MODE_AF, GPIO_PUPD_NONE, GPIO7);
-  gpio_set_af(GPIOD, GPIO_AF7, GPIO8 | GPIO9);
-
-  // Now actually set up the USART peripheral
-  usart_set_baudrate(USART3, 115200);
-  usart_set_databits(USART3, 8);
-  usart_set_stopbits(USART3, USART_STOPBITS_1);
-  usart_set_mode(USART3, USART_MODE_TX_RX);
-  usart_set_parity(USART3, USART_PARITY_NONE);
-  usart_set_flow_control(USART3, USART_FLOWCONTROL_NONE);
-
-  // And ... engage!
-  usart_enable(USART3);
-}
 
 
 
@@ -56,7 +32,7 @@ int main(void) {
   uint32_t current_time; //! \todo We still need to hook up the RTC.
   tamo_state_t tamo_state;
 
-  usart_setup();
+  console_setup();
   printf("Hello console yo!\n");
   led_setup();
   button_setup();

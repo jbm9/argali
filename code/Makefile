@@ -2,7 +2,7 @@ PROJECT = schmancy_blink
 BUILD_DIR = bin
 
 SHARED_DIR = src/
-CFILES = main.c syscalls.c tamo_state.c leds.c buttons.c
+CFILES = main.c syscalls.c tamo_state.c leds.c buttons.c console.c
 # AFILES += api-asm.S
 
 # Note that OOCD_FILE isn't optional in this framework, which is

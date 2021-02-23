@@ -5,6 +5,7 @@
 #include <libopencm3/stm32/usart.h>
 
 #include "syscalls.h"
+#include "console.h"
 
 /**
  * Use USART_CONSOLE as a console.
@@ -21,9 +22,9 @@ int _write(int file, char *ptr, int len)
 	if (file == STDOUT_FILENO || file == STDERR_FILENO) {
 		for (i = 0; i < len; i++) {
 			if (ptr[i] == '\n') {
-				usart_send_blocking(USART_CONSOLE, '\r');
+			  console_send_blocking('\r');
 			}
-			usart_send_blocking(USART_CONSOLE, ptr[i]);
+			console_send_blocking(ptr[i]);
 		}
 		return i;
 	}
