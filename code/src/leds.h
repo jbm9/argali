@@ -4,6 +4,11 @@
  * \brief Header for LED controller
  */
 
+/**
+ * \addtogroup LEDs
+ * \{
+ */
+
 
 #ifdef TEST_UNITY
 #warning Building without hardware support!
@@ -19,12 +24,12 @@
 #define LED_PORT GPIOB       //!< Port all LEDs are connected to
 
 #define GREEN_PORT LED_PORT  //!< GPIO Port the Green LED is connected to
-#define BLUE_PORT LED_PORT   //!< GPIO Port the Blue LED is connected to
-#define RED_PORT LED_PORT    //!< GPIO Port the Red LED is connected to
+#define BLUE_PORT  LED_PORT  //!< GPIO Port the Blue LED is connected to
+#define RED_PORT   LED_PORT  //!< GPIO Port the Red LED is connected to
 
-#define GREEN_PIN 1<<0  //!< GPIO Pin the Green LED is connected to
-#define BLUE_PIN 1<<7   //!< GPIO Pin the Blue LED is connected to
-#define RED_PIN 1<<14   //!< GPIO Pin the Red LED is connected to
+#define GREEN_PIN GPIO0  //!< GPIO Pin the Green LED is connected to
+#define BLUE_PIN  GPIO7  //!< GPIO Pin the Blue LED is connected to
+#define RED_PIN  GPIO14  //!< GPIO Pin the Red LED is connected to
 #endif
 
 
@@ -38,3 +43,5 @@ void led_blue_off(void);
 void led_green_toggle(void);
 void led_green_on(void);
 void led_green_off(void);
+
+/** \} */ // End doxygen group

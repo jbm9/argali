@@ -1,12 +1,6 @@
 /**
  * \file leds.c
  * \brief LED Control implementation
- *
- * This is currently specialized for the STM32F767ZI Nucleo board:
- *
- * - LD1: green: PB0
- * - LD2: blue:  PB7
- * - LD3: red:  PB14
  */
 
 #include <errno.h>
@@ -16,6 +10,19 @@
 #include <unistd.h>
 
 #include "leds.h"
+
+/**
+ * \defgroup LEDs LED Management routines
+ * \addtogroup LEDs
+ * \{
+ *
+ * This is the hardware-specific side of the LED management code.  It
+ * is currently specialized for the STM32F767ZI Nucleo board:
+ *
+ * - LD1: green: PB0
+ * - LD2: blue:  PB7
+ * - LD3: red:  PB14
+ */
 
 /**
  * \brief Set up the LEDs for use
@@ -124,3 +131,4 @@ void led_red_on(void) {
   gpio_set(RED_PORT, RED_PIN);  
 #endif
 }
+/** \} */ // Close out doyxgen group

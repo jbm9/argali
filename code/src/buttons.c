@@ -1,5 +1,16 @@
+/**
+ * \file buttons.c
+ * \brief Button interface implementation
+ */
+
 #include "buttons.h"
 
+/**
+ * \defgroup buttons Button input handlers
+ *
+ * \addtogroup buttons
+ * \{
+ */
 
 /**
  * \brief Sets up the clock and GPIO pin for our button input
@@ -18,3 +29,5 @@ bool button_poll(void)
 {
   return gpio_get(BUTTON_PORT, BUTTON_PIN) ? true : false;
 }
+
+/** \} */ // End doxygen group
