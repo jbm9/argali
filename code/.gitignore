@@ -9,3 +9,6 @@ build_test
 
 # Don't include the docker bash history
 .docker_bash_history
+
+# Don't include the doxygen output
+doxygen_output/

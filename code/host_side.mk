@@ -12,7 +12,7 @@
 # things.  So instead of including that file here, we instead include
 # the main Makefile in unity's Makefile.
 
-DOCKER_RUN_BASE=docker run --privileged -v $(shell pwd):/code -u $(shell id -u):$(shell id -g)
+DOCKER_RUN_BASE=docker run --privileged -v $(shell pwd):/code -v $(shell cd ..; pwd):/project_base -u $(shell id -u):$(shell id -g)
 DOCKER_RUN=$(DOCKER_RUN_BASE) -it argali
 
 OOCD_PORT ?= 4444
@@ -20,6 +20,8 @@ OOCD_PORT ?= 4444
 .PHONY: docker-image
 .PHONY: docker-build docker-flash
 .PHONY: docker-test
+.PHONY: docker-openocd-daemon docker-gdbgui
+.PHONY: docker-doxygen
 
 docker-image:
 	docker build -t argali -f Dockerfile .
@@ -42,3 +44,7 @@ docker-openocd-daemon:
 docker-gdbgui:
 # TODO Check that the openocd port is open
 	$(DOCKER_RUN_BASE) --net=host -p 127.0.0.1:5000:5000 -e HOME=/code -it argali gdbgui -g gdb-multiarch --args /code/$(PROJECT).elf
+
+
+docker-doxygen:
+	$(DOCKER_RUN) ./build_doxygen.sh
