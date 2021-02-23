@@ -5,11 +5,8 @@
  * \brief Implements the tamodevboard happiness states
  *
  * \defgroup tamo_state Tamodevboard's mental state
+ * \addtogroup tamo_state
  * \{
- */
-
-/**
- * \subsection tamo_state_theory Theory of Operation
  *
  * Your devboard has a somewhat rich inner life.  It is lonely when no
  * one is around, but when it detects that a person is nearby, it
@@ -18,7 +15,8 @@
  * the person has left, however, it will eventually become lonely
  * again.
  *
- * 
+ * This module implements a state machine for the above.  It is pure
+ * logic, so it has unit tests that run in the docker container.
  */
 
 /**
