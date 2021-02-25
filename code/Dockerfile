@@ -139,3 +139,14 @@ RUN cd /cmsis-svd/python; pip3 install .
 # copy the data over.
 
 RUN cp -r /cmsis-svd/data/ /usr/local/lib/python3.8/dist-packages/cmsis_svd/
+
+
+############################################################
+# Aaand now we build an unreleased OpenOCD, because the one in the
+# distribution is pretty old, and doesn't support reasonably common
+# chips like the F413.  Sheesh.
+
+RUN apt-get install -y libtool pkg-config libusb-1.0-0-dev
+COPY build_openocd.sh /tmp/build_openocd.sh
+RUN /tmp/build_openocd.sh
+RUN chmod u+s /usr/local/bin/openocd
