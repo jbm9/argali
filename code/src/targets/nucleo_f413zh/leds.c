@@ -1,6 +1,6 @@
 /**
  * \file leds.c
- * \brief LED Control implementation
+ * \brief LED Control implementation (Nucleo F413ZH)
  */
 
 #include <errno.h>
@@ -12,12 +12,12 @@
 #include "leds.h"
 
 /**
- * \defgroup LEDs LED Management routines
- * \addtogroup LEDs
+ * \defgroup nucleo_f413zh_LEDs LED Management routines (Nucleo F413ZH)
  * \{
+ * \ingroup nucleo_f413zh
  *
  * This is the hardware-specific side of the LED management code.  It
- * is currently specialized for the STM32F767ZI Nucleo board:
+ * is currently specialized for the STM32F413ZH Nucleo board:
  *
  * - LD1: green: PB0
  * - LD2: blue:  PB7

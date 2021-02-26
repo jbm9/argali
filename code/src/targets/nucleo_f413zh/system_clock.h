@@ -5,6 +5,11 @@
  * \brief Header file for system clock initialization routine(s)
  */
 
+/**
+ * \ingroup nucleo_f413zh_system_clock
+ * \{
+ */
+
 #define HSE_CLOCK_MHZ 8 //!< An 8MHz clock from ST-Link MCO (default source on MB1137 Nucleo-144 boards per UM1974r8)
 
 #define CPU_CLOCK_SPEED 84000000 //!< Main clock speed
@@ -13,3 +18,5 @@
 
 void system_clock_setup(void);
 void _delay_ms(uint16_t);
+
+/** \} */ // Close Doxygen group

@@ -3,9 +3,25 @@
 
 #include "system_clock.h"
 
+
 /**
  * \file system_clock.c
- * \brief System clock driver for the Nucleo F413ZH evaluation board
+ * \brief System clock driver (Nucleo F413ZH)
+ */
+
+
+/**
+ * \defgroup nucleo_f413zh Drivers: Nucleo F413ZH
+ * \{
+ * Drivers for the Nucleo F413ZH evaluation board
+ * \}
+ */
+
+
+/**
+ * \defgroup nucleo_f413zh_system_clock System clock driver (Nucleo F413ZH)
+ * \{
+ * \ingroup nucleo_f413zh
  */
 
 /**
@@ -32,3 +48,5 @@ void _delay_ms(uint16_t ms) {
   for (uint32_t i = 0; i < ms * loops_per_ms; i += 1)
     __asm__("NOP");
 }
+
+/** \} */ // Close Doxygen group

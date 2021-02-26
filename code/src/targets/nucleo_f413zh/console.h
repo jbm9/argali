@@ -2,9 +2,9 @@
 
 /**
  * \file console.h
- * \brief Header file for console interface
+ * \brief Header file for console interface (Nucleo F413ZH)
  *
- * \addtogroup console
+ * \ingroup nucleo_f413zh_console
  * \{
  */
 

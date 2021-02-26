@@ -7,11 +7,11 @@
 
 /**
  * \file buttons.h
- * \brief Header file for buttons driver
+ * \brief Header file for buttons driver (Nucleo F413ZH)
  */
 
 /**
- * \addtogroup buttons
+ * \addtogroup nucleo_f413zh_buttons
  * \{
  */
 

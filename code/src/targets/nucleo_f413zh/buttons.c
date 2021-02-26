@@ -1,15 +1,16 @@
 /**
  * \file buttons.c
- * \brief Button interface implementation
+ * \brief Nucleo F767ZH Button interface implementation
  */
 
 #include "buttons.h"
 
 /**
- * \defgroup buttons Button input handlers
+ * \defgroup nucleo_f413zh_buttons Button input handlers (Nucleo F413ZH)
  *
- * \addtogroup buttons
+ * \addtogroup nucleo_f413zh_buttons
  * \{
+ * \ingroup nucleo_f413zh
  */
 
 /**

@@ -2,11 +2,11 @@
 
 /**
  * \file console.c
- * \brief Serial Console driver implementation
+ * \brief Serial Console driver implementation (Nucleo F413ZH)
  *
- * \defgroup console Serial console
- * \addtogroup console
+ * \defgroup nucleo_f413zh_console Serial console (Nucleo F413ZH)
  * \{
+ * \ingroup nucleo_f413zh
  *
  * Tamodevboard supports a very basic serial console out of the box.
  *
