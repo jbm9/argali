@@ -2,11 +2,11 @@
 
 /**
  * \file console.c
- * \brief Serial Console driver implementation (Nucleo F767ZI)
+ * \brief Serial Console driver implementation
  *
- * \defgroup nucleo_f767zi_console Serial console (Nucleo F767ZI)
+ * \defgroup console Serial console
+ * \addtogroup console
  * \{
- * \ingroup nucleo_f767zi
  *
  * Tamodevboard supports a very basic serial console out of the box.
  *

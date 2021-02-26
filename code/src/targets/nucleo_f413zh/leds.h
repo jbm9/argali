@@ -1,11 +1,11 @@
 #pragma once
 /**
  * \file leds.h
- * \brief Header for LED controller (Nucleo F767ZI)
+ * \brief Header for LED controller
  */
 
 /**
- * \addtogroup nucleo_f767zi_LEDs
+ * \addtogroup LEDs
  * \{
  */
 

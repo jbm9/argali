@@ -2,9 +2,9 @@
 
 /**
  * \file console.h
- * \brief Header file for console interface (Nucleo F767ZI)
+ * \brief Header file for console interface
  *
- * \addtogroup nucleo_f767zi_console
+ * \addtogroup console
  * \{
  */
 

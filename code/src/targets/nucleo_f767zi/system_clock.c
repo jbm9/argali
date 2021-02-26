@@ -5,7 +5,20 @@
 
 /**
  * \file system_clock.c
- * \brief System clock driver for the Nucleo F767ZI evaluation board
+ * \brief System clock driver (Nucleo F767ZI)
+ */
+
+/**
+ * \defgroup nucleo_f767zi Drivers: Nucleo F767ZI
+ * \{
+ * Drivers for the Nucleo F767ZI evaluation board
+ * \}
+ */
+
+/**
+ * \defgroup nucleo_f767zi_system_clock System Clock driver (Nucleo F767ZI)
+ * \{
+ * \ingroup nucleo_f767zi
  */
 
 /**
@@ -33,3 +46,5 @@ void _delay_ms(uint16_t ms) {
   for (uint32_t i = 0; i < ms * CLOCKS_PER_MS; i++)
     __asm__("NOP");
 }
+
+/** \} */  // End doxygen group

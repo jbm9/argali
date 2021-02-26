@@ -2,7 +2,7 @@
 
 /**
  * \file system_clock.h
- * \brief Header file for system clock initialization routine(s)
+ * \brief Header file for system clock initialization routine(s) (Nucleo F767ZI)
  */
 
 

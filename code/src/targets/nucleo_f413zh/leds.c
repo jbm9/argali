@@ -1,6 +1,6 @@
 /**
  * \file leds.c
- * \brief LED Control implementation (Nucleo F767ZI)
+ * \brief LED Control implementation
  */
 
 #include <errno.h>
@@ -12,9 +12,9 @@
 #include "leds.h"
 
 /**
- * \defgroup nucleo_f767zi_LEDs LED Management routines (Nucleo F767ZI)
+ * \defgroup LEDs LED Management routines
+ * \addtogroup LEDs
  * \{
- * \ingroup nucleo_f767zi
  *
  * This is the hardware-specific side of the LED management code.  It
  * is currently specialized for the STM32F767ZI Nucleo board:

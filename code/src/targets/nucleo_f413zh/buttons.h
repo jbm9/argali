@@ -7,11 +7,11 @@
 
 /**
  * \file buttons.h
- * \brief Header file for buttons driver (Nucleo F767ZI)
+ * \brief Header file for buttons driver
  */
 
 /**
- * \addtogroup nucleo_f767zi_buttons
+ * \addtogroup buttons
  * \{
  */
 

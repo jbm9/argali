@@ -1,14 +1,15 @@
 /**
  * \file buttons.c
- * \brief Button interface implementation (Nucleo F767ZI)
+ * \brief Button interface implementation
  */
 
 #include "buttons.h"
 
 /**
- * \defgroup nucleo_f767zi_buttons Button input handlers (Nucleo F767ZI)
+ * \defgroup buttons Button input handlers
+ *
+ * \addtogroup buttons
  * \{
- * \ingroup nucleo_f767zi
  */
 
 /**
