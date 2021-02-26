@@ -9,9 +9,7 @@
 #include <stdio.h>
 #include <unistd.h>
 
-#include <libopencm3/stm32/gpio.h>
-#include <libopencm3/stm32/rcc.h>
-
+#include "system_clock.h"
 #include "console.h"
 #include "buttons.h"
 #include "leds.h"
@@ -31,23 +29,6 @@
  */
 
 
-#define CLOCKS_PER_MS 10000 //!< Approximate number of NOP/inc/cmp loop cycles to run to delay a millisecond
-
-/**
- * \brief A janky, approximate, busy-loop delay function
- *
- * \param ms The approximate time to sleep for (in milliseconds)
- *
- * Note that this is wildly inadequate for anything but silly sample
- * code.  It should be using a known-good configuration of the system
- * clock, and, if used in anything like production code, should
- * probably have a verification and validation plan.
- */
-static void _delay_ms(uint16_t ms) {
-  //! \todo actually use the clock speed for delays
-  for (uint32_t i = 0; i < ms * CLOCKS_PER_MS; i++)
-    __asm__("NOP");
-}
 
 /**
  * \brief The main loop.
@@ -55,6 +36,8 @@ static void _delay_ms(uint16_t ms) {
 int main(void) {
   uint32_t current_time; //! \todo We still need to hook up the RTC.
   tamo_state_t tamo_state;
+
+  system_clock_setup();
 
   console_setup();
   printf("Hello console yo!\n");

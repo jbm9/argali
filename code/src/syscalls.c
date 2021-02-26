@@ -2,8 +2,6 @@
 #include <stdio.h>
 #include <unistd.h>
 
-#include <libopencm3/stm32/usart.h>
-
 #include "syscalls.h"
 #include "console.h"
 

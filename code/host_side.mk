@@ -39,7 +39,7 @@ docker-test:
 	$(DOCKER_RUN) make -f unity_tests.mk test-unity
 
 docker-openocd-daemon:
-	$(DOCKER_RUN_BASE) --net=host -p 127.0.0.1:$(OOCD_PORT):$(OOCD_PORT) -p 127.0.0.1:3333:3333 -it argali make openocd-daemon
+	$(DOCKER_RUN_BASE) --net=host -p 127.0.0.1:$(OOCD_PORT):$(OOCD_PORT) -p 127.0.0.1:3333:3333 -it argali make openocd-daemon TARGET=$(TARGET) OOCD_FILE=$(OOCD_FILE) OOCD_INTERFACE=$(OOCD_INTERFACE) V=$(V)
 
 docker-gdbgui:
 # TODO Check that the openocd port is open
