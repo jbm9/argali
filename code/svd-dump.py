@@ -2,7 +2,7 @@
 Utilities for dumping STM32 peripheral registers with tab-completion
 Based on a script by vampi-the-frog
 
-This script was downloaded from 
+This script was downloaded from
 https://gist.githubusercontent.com/devanlai/644910b712361e7317ec2305884aea8d/raw/edd3beaf27f43d6cd7737388f939878704e58412/svd-dump.py
 
 Dependencies:
@@ -51,6 +51,42 @@ Usage (inside gdb):
     CR3  0x0014 CTSIE=0 CTSE=0 RTSE=0 DMAT=0 DMAR=0 SCEN=0 NACK=0 HDSEL=0 IRLP=0 IREN=0 EIE=0
     GTPR 0x0018 GT=0 PSC=0
 
+
+    # Show all fields matching a regular expression in a given peripheral.
+    # For instance, if you want to see everything for GPIO PC9:
+    (gdb) svd_show GPIOC ~9
+
+    MODER
+    MODER9=0
+
+    OTYPER
+    OT9=0
+
+    GPIOB_OSPEEDR
+    OSPEEDR9=0
+
+    PUPDR
+    PUPDR9=0
+
+    IDR
+    IDR9=0
+
+    ODR
+    ODR9=0
+
+    BSRR
+    BR9=0
+    BS9=0
+
+    LCKR
+    LCK9=0
+
+    AFRH
+    AFRH9=0
+
+    BRR
+    BR9=0
+
     # Loading from an external SVD file
     (gdb) svd_load_file /path/to/your_file.svd
 
@@ -63,6 +99,8 @@ import gdb
 import struct
 from cmsis_svd.parser import SVDParser
 import pkg_resources
+
+import re
 
 class SVDSelector(gdb.Command):
     def __init__(self):
@@ -148,7 +186,7 @@ class SVDPrinter(gdb.Command):
     def set_device(self, device):
         self.device = device
         self.peripherals = dict((peripheral.name,peripheral) for peripheral in self.device.peripherals)
-        
+
     def complete(self, text, word):
         if not self.device:
             return gdb.COMPLETE_NONE
@@ -186,7 +224,7 @@ class SVDPrinter(gdb.Command):
             return register_names
         return gdb.COMPLETE_NONE
 
-    def dump_register(self, peripheral, register, name_width=0, options=""):
+    def dump_register(self, peripheral, register, name_width=0, options="", match_re=None):
         if not name_width:
             name_width = len(register.name)
         val = struct.unpack("<L", gdb.inferiors()[0].read_memory(peripheral.base_address + register.address_offset, 4))[0];
@@ -197,6 +235,7 @@ class SVDPrinter(gdb.Command):
             reg_fmt += " {value:032b}"
         elif "h" in options:
             reg_fmt += " {value:08x}"
+        print()  # Add a newline between entries: very hard to read this line-delimited format otherwise
         print(reg_fmt.format(name=register.name,
                              offset=register.address_offset,
                              value=val,
@@ -211,13 +250,16 @@ class SVDPrinter(gdb.Command):
             field_fmt = "{name}={value:d}"
             active_field_fmt = "\033[32m{name}={value:d}\033[0m"
         for field in register.fields:
+            if match_re and re.search(match_re, field.name) is None:
+                continue
+
             fieldval = (val >> field.bit_offset) & ((1 << field.bit_width) - 1)
             hex_width = (field.bit_width + 3) // 4
             if self.colorize and fieldval > 0:
                 fmt = active_field_fmt
             else:
                 fmt = field_fmt
-            
+
             print(fmt.format(name=field.name,
                              value=fieldval,
                              bit_width=field.bit_width,
@@ -245,16 +287,36 @@ class SVDPrinter(gdb.Command):
                 if len(args) == 1:
                     print("%s @ 0x%08x" % (peripheral.name, peripheral.base_address))
                     if peripheral.registers:
-                        width = max(len(reg.name) for reg in peripheral.registers) 
+                        width = max(len(reg.name) for reg in peripheral.registers)
                         for register in peripheral.registers:
                             self.dump_register(peripheral, register, width, options)
                 elif len(args) == 2:
+                    got_match = False
+
+                    word = args[1]
+                    matchfn = lambda s: s.upper() == args[1].upper()
+
+                    match_re = None
+
+                    if word.startswith("~"):
+                        if len(word) == 1:
+                            raise gdb.GdbError(f'Cannot match an empty regular expression.')
+                        match_re = re.compile(word[1:], re.IGNORECASE)
+                        matchfn = lambda s: re.search(match_re, s) is not None
+
                     for register in peripheral.registers:
-                        if register.name == args[1]:
+                        if matchfn(register.name):
                             self.dump_register(peripheral, register, 0, options)
-                            break
-                    else:
-                        raise gdb.GdbError("Invalid register name")
+                            got_match = True
+                            continue
+
+                        if any([matchfn(f.name) for f in register.fields]):
+                            self.dump_register(peripheral, register, 0, options, match_re)
+                            got_match = True
+                            continue
+
+                    if not got_match:
+                        raise gdb.GdbError(f"No matching register for '{word}'")
             else:
                 raise gdb.GdbError("Usage: svd_show[/[x|b]fi] peripheral-name [register-name]")
         except KeyboardInterrupt:
