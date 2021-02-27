@@ -1,5 +1,3 @@
-file /code/schmancy_blink.elf
-
 target extended-remote localhost:3333
 
 # Add in the SVD-assisted register dumper
