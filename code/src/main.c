@@ -18,9 +18,7 @@
 
 
  /**
- * \defgroup mainloop Main loop
- *
- * \addtogroup mainloop
+ * \defgroup 00mainloop Main loop
  * \{
  *
  * This is the main loop; it runs a busy loop that manages polling for
