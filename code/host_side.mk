@@ -17,6 +17,9 @@ DOCKER_RUN=$(DOCKER_RUN_BASE) -it argali
 
 OOCD_PORT ?= 4444
 
+# Clump all the variables we need to pass in to docker makes in one place
+ARGALIVARS=TARGET=$(TARGET) OOCD_FILE=$(OOCD_FILE) OOCD_INTERFACE=$(OOCD_INTERFACE) V=$(V)
+
 .PHONY: docker-image
 .PHONY: docker-build docker-flash
 .PHONY: docker-test
@@ -27,19 +30,20 @@ docker-image:
 	docker build -t argali -f Dockerfile .
 
 docker-build:
-	$(DOCKER_RUN)  make all
+	$(DOCKER_RUN)  make all $(ARGALIVARS)
 
 docker-flash:
 # TODO You can't currently run this command while the openocd-daemon
 # is running, since it has grabbed $(OOCD_PORT) for its container,
 # which can't be seen from here.  Probably need to add a network for this?
-	$(DOCKER_RUN) make V=$(V) flash
+	$(DOCKER_RUN) make flash $(ARGALIVARS)
 
 docker-test:
+# NB: This one doesn't use ARGALIVARS, since those are for building firmware
 	$(DOCKER_RUN) make -f unity_tests.mk test-unity
 
 docker-openocd-daemon:
-	$(DOCKER_RUN_BASE) --net=host -p 127.0.0.1:$(OOCD_PORT):$(OOCD_PORT) -p 127.0.0.1:3333:3333 -it argali make openocd-daemon TARGET=$(TARGET) OOCD_FILE=$(OOCD_FILE) OOCD_INTERFACE=$(OOCD_INTERFACE) V=$(V)
+	$(DOCKER_RUN_BASE) --net=host -p 127.0.0.1:$(OOCD_PORT):$(OOCD_PORT) -p 127.0.0.1:3333:3333 -it argali make openocd-daemon $(ARGALIVARS)
 
 docker-gdbgui:
 # TODO Check that the openocd port is open

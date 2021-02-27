@@ -63,6 +63,9 @@ INCLUDES += $(patsubst %,-I%, . $(OPENCM3_INC) )
 OBJS = $(CFILES:%.c=$(BUILD_DIR)/%.o)
 OBJS += $(AFILES:%.S=$(BUILD_DIR)/%.o)
 GENERATED_BINS = $(PROJECT).elf $(PROJECT).bin $(PROJECT).map $(PROJECT).list $(PROJECT).lss
+# Move our built binaries into the appropriate subdirectory
+#GENERATED_BINS_FIXUP = $(GENERATED_BINS:%=$(BUILD_DIR)/%)
+#GENERATED_BINS = $(GENERATED_BINS_FIXUP)
 
 TGT_CPPFLAGS += -MD
 TGT_CPPFLAGS += -Wall -Wundef $(INCLUDES)
