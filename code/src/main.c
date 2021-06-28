@@ -10,6 +10,7 @@
 #include <unistd.h>
 
 #include "system_clock.h"
+#include "logging.h"
 #include "console.h"
 #include "buttons.h"
 #include "leds.h"
@@ -26,7 +27,10 @@
  * to the console.
  */
 
-
+static void console_line_handler(char *line, uint32_t line_len) {
+  line_len = line_len;  // Make the unused parameter warning go away
+  logline(LEVEL_INFO, "Got line: %s", line);
+}
 
 /**
  * \brief The main loop.
@@ -35,10 +39,12 @@ int main(void) {
   uint32_t current_time; //! \todo We still need to hook up the RTC.
   tamo_state_t tamo_state;
 
+  static char console_rx_buffer[1024]; //!< Buffer for the console to use
+
   system_clock_setup();
 
-  console_setup();
-  printf("Hello console yo!\n");
+  console_setup(&console_line_handler, console_rx_buffer, 1024);
+  log_forced("Hello console 2!");
   led_setup();
   button_setup();
 

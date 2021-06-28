@@ -1,5 +1,7 @@
 #include "console.h"
 
+#include <libopencm3/cm3/nvic.h>
+
 /**
  * \file console.c
  * \brief Serial Console driver implementation (Nucleo F767ZI)
@@ -15,10 +17,24 @@
  */
 
 
+static console_state_t console_state;
+
 /**
  * \brief Configure all the peripherals needed for the serial console
+ *
+ * \param cb Callback to use when commands are received (NULL for no callback)
+ * \param buf Buffer the console will use to store incoming data
+ * \param buflen Length of the buffer  
  */
-void console_setup(void) {
+void console_setup(console_cb cb, char *buf, uint32_t buflen) {
+
+  // Set up our state
+  memset(&console_state, 0, sizeof(console_state));
+  console_state.cb = cb;
+  console_state.buf = buf;
+  console_state.buflen = buflen;
+  console_state.tail = buf;
+  
   // Enable USART3 clocks
   rcc_periph_clock_enable(CONSOLE_PORT_CLOCK); // USART TX pin
   rcc_periph_clock_enable(CONSOLE_USART_CLOCK);
@@ -36,8 +52,14 @@ void console_setup(void) {
   usart_set_parity(CONSOLE_USART, USART_PARITY_NONE);
   usart_set_flow_control(CONSOLE_USART, USART_FLOWCONTROL_NONE);
 
+  nvic_enable_irq(NVIC_USART3_IRQ);
+  
   // And ... engage!
   usart_enable(CONSOLE_USART);
+  if (console_state.cb) {
+    usart_enable_rx_interrupt(CONSOLE_USART);
+  }
+  
 }
 
 /**
@@ -46,6 +68,24 @@ void console_setup(void) {
 void console_send_blocking(const char c)
 {
   usart_send_blocking(CONSOLE_USART, c);
+}
+
+void CONSOLE_ISR_NAME(void)
+{
+  char c = USART_RDR(CONSOLE_USART);
+  uint32_t len;
+  
+  *console_state.tail = c;
+  console_send_blocking(c);
+
+  console_state.tail++;
+
+  len = console_state.tail-console_state.buf;
+  
+  if (c == '\n' || len >= console_state.buflen) {
+    console_state.cb(console_state.buf, len);
+    console_state.tail = console_state.buf;  // Reset pointer
+  }
 }
 
 /** \} */ // End doxygen group
