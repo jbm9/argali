@@ -1,3 +1,6 @@
+# Don't commit goofball "lockfiles" (used to show local setup is complete)
+.argali_setup
+
 # Don't commit binaries by accident
 bin/
 schmancy_blink.bin

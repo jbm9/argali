@@ -26,10 +26,18 @@ ARGALIVARS=TARGET=$(TARGET) OOCD_FILE=$(OOCD_FILE) OOCD_INTERFACE=$(OOCD_INTERFA
 .PHONY: docker-openocd-daemon docker-gdbgui
 .PHONY: docker-doxygen
 
+.argali_setup: docker-image
+	git submodule init
+	git submodule update
+	make docker-image
+	make docker-build
+	touch .argali_setup
+
 docker-image:
 	docker build -t argali -f Dockerfile .
 
 docker-build:
+	$(DOCKER_RUN) make -C libopencm3 all
 	$(DOCKER_RUN)  make all $(ARGALIVARS)
 
 docker-flash:
