@@ -6,13 +6,14 @@ TARGET ?= nucleo_f767zi
 # Note that TDIR is *relative* to SHARED_DIR
 TDIR = src/targets/$(TARGET)/
 
+
 # Don't include per-target files here; those belong in the
 # $(TDIR)/target.mk file.  This is done so that target code can be
 # organized as you see fit, and you don't have to ensure everything
 # matches exactly across the many targets you might have.
 #
 # This should just be files in the "application" code.
-CFILES = main.c syscalls.c tamo_state.c logging.c sin_gen.c dtmf.c pi_reciter.c
+CFILES = main.c syscalls.c tamo_state.c logging.c sin_gen.c dtmf.c pi_reciter.c packet.c
 
 ######################################################################
 # You shouldn't have to edit anything below here.
