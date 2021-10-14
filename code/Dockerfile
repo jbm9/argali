@@ -150,3 +150,11 @@ RUN apt-get install -y libtool pkg-config libusb-1.0-0-dev
 COPY build_openocd.sh /tmp/build_openocd.sh
 RUN /tmp/build_openocd.sh
 RUN chmod u+s /usr/local/bin/openocd
+
+
+
+
+############################################################
+# Add some needed latex packages for Doxygen to assemble docs
+RUN apt-get update
+RUN apt-get install -y texlive-latex-extra
