@@ -38,3 +38,12 @@ full_version="${version}-${gitrev}"
 [ $DEBUG ] && echo "Building doxygen for ${full_version}"
 
 (cat Doxyfile; echo "PROJECT_NUMBER=${full_version}") | doxygen -
+
+[ $DEBUG ] && echo ">>>>>>>>>>>> Running PDF assembly for ${full_version}"
+
+pushd doxygen_output/latex/
+[ $DEBUG ] && pwd
+[ $DEBUG ] && ls -l
+make
+popd
+cp doxygen_output/latex/refman.pdf .
