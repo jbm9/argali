@@ -12,3 +12,19 @@ why you probably want to be very fastidious about factoring your code
 so that nothing but actual hardware-specific code lives in this
 directory.  This minimizes the surface area you're copying around
 every time.
+
+
+## nucleo_f767zi
+
+This is the target used for the initial prototype development, the ST
+Nucleo F767ZI devboard.  All functionality is supported on this board.
+
+## nucleo_f413zh
+
+This is the first scale-down target, used to help cost-reduce the
+TamoDevBoard project.  All functionality is supported here, but
+advanced AI functionality may be limited due to the smaller processer
+and limited memory footprint.
+
+Also it's less fancy, but our project doesn't use said fanciness.
+
