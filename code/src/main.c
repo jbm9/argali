@@ -18,6 +18,16 @@
 #include "tamo_state.h"
 
 
+/*
+ * First, a dirty hack to get our version string set up.
+ */
+
+#define xstr(x) str(x)  //!< Stage 2 of a janky two-stage macro-stringifier
+#define str(x) #x       //!< Stage 1 of a janky two-stage macro-stringifier
+#ifndef ARGALI_VERSION
+#define ARGALI_VERSION UNKNOWN  //!< Default version if none given (No quotes)
+#endif
+
  /**
  * \defgroup 00mainloop Main loop
  * \{
@@ -44,7 +54,7 @@ int main(void) {
   system_clock_setup();
 
   console_setup(&console_line_handler, console_rx_buffer, 1024);
-  log_forced("Hello console 2!");
+  log_forced("TamoDevBoard startup, version " xstr(ARGALI_VERSION) " Compiled " __TIMESTAMP__);
   led_setup();
   button_setup();
 

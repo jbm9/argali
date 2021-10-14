@@ -13,6 +13,8 @@ CFILES = main.c syscalls.c tamo_state.c logging.c
 
 BUILD_DIR = bin/$(TARGET)
 
+ARGALI_VERSION = $(shell ./argali_version.sh)
+
 # This is a bit of a kludge to get libopencm3's Makefile to put our
 # binaries in the target-appropriate subdirectory.
 PROJECT = $(BUILD_DIR)/$(PROJECT_NAME)
@@ -42,5 +44,8 @@ include $(OPENCM3_DIR)/mk/genlink-rules.mk
 
 openocd-daemon:
 	$(OOCD) -f $(OOCD_FILE)
+
+# Inject our version string into a cpp #define
+TGT_CPPFLAGS += -DARGALI_VERSION=$(ARGALI_VERSION)
 
 include host_side.mk
