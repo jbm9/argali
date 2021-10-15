@@ -6,7 +6,7 @@ TARGET ?= nucleo_f767zi
 # Note that TDIR is *relative* to SHARED_DIR
 TDIR = src/targets/$(TARGET)/
 
-CFILES = main.c syscalls.c tamo_state.c logging.c
+CFILES = main.c syscalls.c tamo_state.c logging.c dac.c
 
 ######################################################################
 # You shouldn't have to edit anything below here.

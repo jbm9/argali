@@ -13,6 +13,7 @@
 #include "logging.h"
 #include "console.h"
 #include "buttons.h"
+#include "dac.h"
 #include "leds.h"
 #include "syscalls.h"
 #include "tamo_state.h"
@@ -43,6 +44,25 @@ static void console_line_handler(char *line, uint32_t line_len) {
 }
 
 /**
+ * \brief Set up the DAC waveform to emit when bored
+ */
+static void register_dac_waveform(void) {
+#define WAVEFORM_LEN 256
+  uint8_t buf[256];
+  int i;
+
+  for (i = 0; i < WAVEFORM_LEN/2; i++) {
+    buf[i] = 2*i;
+  }
+  for (i = WAVEFORM_LEN/2; i < WAVEFORM_LEN; i++) {
+    buf[i] = 2*(255-i);
+  }
+
+  dac_register_buf(buf, WAVEFORM_LEN);
+#undef WAVEFORM_LEN
+}
+
+/**
  * \brief The main loop.
  */
 int main(void) {
@@ -57,6 +77,8 @@ int main(void) {
   log_forced("TamoDevBoard startup, version " xstr(ARGALI_VERSION) " Compiled " __TIMESTAMP__);
   led_setup();
   button_setup();
+  dac_setup();
+  register_dac_waveform();
 
   current_time = 0;
   tamo_state_init(&tamo_state, current_time);
@@ -67,8 +89,16 @@ int main(void) {
       bool user_present = button_poll();
 
       if (tamo_state_update(&tamo_state, current_time, user_present)) {
-        printf("Transition to %s: %d\n",
-               tamo_emotion_name(tamo_state.current_emotion), user_present);
+        logline(LEVEL_INFO, "Transition to %s: %d",
+		tamo_emotion_name(tamo_state.current_emotion), user_present);
+
+	switch(tamo_state.current_emotion) {
+	case TAMO_BORED:
+	    dac_start(1152, 500);
+	    break;
+	default:
+	  dac_stop();
+	}
       }
       switch (tamo_state.current_emotion) {
       case TAMO_LONELY: // blink red at 5Hz when lonely
