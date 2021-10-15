@@ -1,6 +1,6 @@
 /**
  * \file buttons.c
- * \brief Nucleo F767ZH Button interface implementation
+ * \brief Nucleo F413ZH Button interface implementation
  */
 
 #include "buttons.h"
