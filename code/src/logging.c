@@ -30,6 +30,7 @@ const char* log_level_to_str(log_level_t loglevel) {
   case LEVEL_WARN: return "WARN";
   case LEVEL_INFO: return "INFO";
   case LEVEL_DEBUG: return "DEBUG";
+  case LEVEL_DEBUG_NOISY: return "NOISY";
   default: return "UNK";
   }
 }
