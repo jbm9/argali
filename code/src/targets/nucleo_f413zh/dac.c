@@ -45,6 +45,9 @@
  * Call dac_start() to start the DMA output
  *
  * Call dac_stop() to stop the DMA output
+ *
+ * Note that the current implementation is very rough around the
+ * edges, and is based on the libopencm3 dac-dma example.
  */
 
 static dac_state_t dac_state;
