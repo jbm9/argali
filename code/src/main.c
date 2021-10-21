@@ -14,10 +14,14 @@
 #include "console.h"
 #include "buttons.h"
 #include "dac.h"
+#include "adc.h"
 #include "leds.h"
 #include "syscalls.h"
 #include "tamo_state.h"
+#include "sin_gen.h"
 
+volatile int adc_counts = 0;
+static int last_adc_counts = 0;
 
 /*
  * First, a dirty hack to get our version string set up.
@@ -43,24 +47,45 @@ static void console_line_handler(char *line, uint32_t line_len) {
   logline(LEVEL_INFO, "Got line: %s", line);
 }
 
+static uint8_t dac_buf[256]; //!< The waveform to emit when bored
 /**
  * \brief Set up the DAC waveform to emit when bored
  */
-static void register_dac_waveform(void) {
+static void dac_waveform_setup(void) {
 #define WAVEFORM_LEN 256
-  uint8_t buf[256];
   int i;
+  uint16_t prescaler = 10;
+  uint32_t period = 100;
 
-  for (i = 0; i < WAVEFORM_LEN/2; i++) {
-    buf[i] = 2*i;
-  }
-  for (i = WAVEFORM_LEN/2; i < WAVEFORM_LEN; i++) {
-    buf[i] = 2*(255-i);
+  float dac_sample_rate = dac_get_sample_rate(prescaler, period);
+
+  sin_gen_result_t res;
+  sin_gen_request_t req;
+
+  res = sin_gen_populate(&req, dac_buf, WAVEFORM_LEN, 1000, dac_sample_rate);
+  if (SIN_GEN_OKAY != res) {
+    logline(LEVEL_ERROR, "Failed to populate sin_gen request, bailing on DAC setup: %s!",
+	    sin_gen_result_name(res));
+    return;
   }
 
-  dac_register_buf(buf, WAVEFORM_LEN);
+  res = sin_gen_generate(&req);
+  if (SIN_GEN_OKAY != res) {
+    logline(LEVEL_ERROR, "Failed to generate sine tone, bailing on DAC setup: %s!",
+	    sin_gen_result_name(res));
+    return;
+  }
+
+  logline(LEVEL_INFO, "DAC sample rate: %ld, expected freq: %ld (%d samples)",
+	  (int)dac_sample_rate,
+	  (int)(dac_sample_rate/req.result_len),
+	  req.result_len);
+  dac_setup(prescaler, period, dac_buf, req.result_len);
 #undef WAVEFORM_LEN
 }
+
+#define ADC_NUM_SAMPLES 512
+static uint8_t adc_buf[ADC_NUM_SAMPLES];
 
 /**
  * \brief The main loop.
@@ -77,16 +102,36 @@ int main(void) {
   log_forced("TamoDevBoard startup, version " xstr(ARGALI_VERSION) " Compiled " __TIMESTAMP__);
   led_setup();
   button_setup();
-  dac_setup();
-  register_dac_waveform();
+  dac_waveform_setup();
 
   current_time = 0;
   tamo_state_init(&tamo_state, current_time);
+  adc_setup(adc_buf, ADC_NUM_SAMPLES);
 
   while (1) {
     // Run this loop at about 10Hz, and poll for inputs.  (Huge antipattern!)
     for (int j = 0; j < 10; j++) {
       bool user_present = button_poll();
+
+#if 1
+      if (adc_counts != last_adc_counts) {
+	logline(LEVEL_INFO, "ADC incr: %d -> %d", adc_counts, last_adc_counts);
+	last_adc_counts = adc_counts;
+      }
+
+      if (user_present) {
+	adc_pause();
+	led_red_on();
+	// printf("adc_isrs = %ld / %d %d %d %d\n", adc_isrs, adc_buf[0], adc_buf[10], adc_buf[20], adc_buf[buflen/2]);
+	for (int i = 0; i < ADC_NUM_SAMPLES; i++)
+	  //	console_send_blocking(adc_buf[i]);
+	  printf("%d ", adc_buf[i]);
+
+	printf("\n");
+	adc_unpause();
+	led_red_off();
+      }
+#endif
 
       if (tamo_state_update(&tamo_state, current_time, user_present)) {
         logline(LEVEL_INFO, "Transition to %s: %d",
@@ -94,10 +139,9 @@ int main(void) {
 
 	switch(tamo_state.current_emotion) {
 	case TAMO_BORED:
-	    dac_start(1152, 500);
 	    break;
 	default:
-	  dac_stop();
+	  break;
 	}
       }
       switch (tamo_state.current_emotion) {

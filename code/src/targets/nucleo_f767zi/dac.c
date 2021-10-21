@@ -31,26 +31,26 @@ static void gpio_setup(void) {
  * TIM2CLK/(prescaler+1)/(period+1)/2, since we toggle the OC line
  * every time we hit it, but only clock the DAC on rising edges.
  *
- * TIMxCLK is derived from different sources, described in RM0430r8
- * p121, section 6.2 Clocks
+ * TIMxCLK is derived from different sources, described in RM0410r4
+ * p154, section 5.2 Clocks
  *
- * If RCC_DCKCFGR has TIMPRE cleared, and APB prescaler is 1, then
- * TIMxCLK HCLK.
+ * If RCC_DKCFGR1 has TIMPRE cleared, and APB prescaler is 1, then
+ * TIMxCLK is PCLKx.
  *
  * If RCC_DKCFGR1 has TIMPRE cleared, and APB prescaler is not 1, then
- * TIMxCLK is 2*xPCLKx
+ * TIMxCLK is 2*PCLKx
  *
- * If RCC_DKCFGR1 has TIMPRE set, and APB prescaler is 1 or 2, then
+ * If RCC_DKCFGR1 has TIMPRE set, and APB prescaler is 1/2/4, then
  * TIMxCLK is HCLK
  *
- * If RCC_DKCFGR1 has TIMPRE cleared, and APB prescaler is not 1 or 2,
- * then TIMxCLK is 4*PCLKx
+ * If RCC_DKCFGR1 has TIMPRE cleared, and APB prescaler is not 1, then
+ * TIMxCLK is 4*PCLKx
  *
  * This is a helpful breakdown of the clocking, though it's a bit
  * gnarly.
 
  *
- * RCC_DCKCFGR1 is on pp177&8, 6.3.27.
+ * RCC_DCKCFGR1 is on pp212-4, 5.3.25.  TIMPRE is on p213.
  *
  * Note that libopencm3 provides rcc_get_timer_clk_freq(), which
  * manages all of the computation to figure out what your timer is
@@ -64,7 +64,7 @@ static void gpio_setup(void) {
  */
 static void timer_setup(uint16_t prescaler, uint32_t period)
 {
-  // Timer2, RM0430r8 p534 intro
+  // Timer2, RM0410r4 p961 intro
   // Enable TIM2 clock.
   rcc_periph_clock_enable(RCC_TIM2);
 
@@ -72,7 +72,7 @@ static void timer_setup(uint16_t prescaler, uint32_t period)
   rcc_periph_reset_pulse(RST_TIM2);
 
   // Timer 2 mode: - 4x oversample, Alignment edge, Direction up
-  // This is all in TIM2_CR1, p572 18.4.1
+  // This is all in TIM2_CR1, pp1006&7, 26.4.1
   timer_set_mode(TIM2, TIM_CR1_CKD_CK_INT_MUL_4,
 		 TIM_CR1_CMS_EDGE, TIM_CR1_DIR_UP);
 
@@ -82,10 +82,10 @@ static void timer_setup(uint16_t prescaler, uint32_t period)
   // Also TIM2_CR1
   timer_continuous_mode(TIM2);
 
-  // Set the period between ticks, TIM2_ARR, p587, 18.4.12
+  // Set the period between ticks, TIM2_ARR, p1023, 26.4.11
   timer_set_period(TIM2, period);
 
-  // Disable OC outputs we don't use, TIM_CCER pp585&6 18.4.9
+  // Disable OC outputs we don't use, TIM_CCER pp1021&2 26.4.9
   timer_disable_oc_output(TIM2, TIM_OC2);
   timer_disable_oc_output(TIM2, TIM_OC3);
   timer_disable_oc_output(TIM2, TIM_OC4);
@@ -93,7 +93,7 @@ static void timer_setup(uint16_t prescaler, uint32_t period)
   // And enable our output on OC1, also TIM_CCER
   timer_enable_oc_output(TIM2, TIM_OC1);
 
-  // Lots of OC mangling, all in TIM2_CCMR1, pp581-3 18.4.7
+  // Lots of OC mangling, all in TIM2_CCMR1, pp1015-9 26.4.7
   timer_disable_oc_clear(TIM2, TIM_OC1);
   timer_disable_oc_preload(TIM2, TIM_OC1);
   timer_set_oc_slow_mode(TIM2, TIM_OC1);
@@ -101,15 +101,13 @@ static void timer_setup(uint16_t prescaler, uint32_t period)
   // Ends TIM2_CCMR1 mangling
 
   // Set the timer trigger output (for the DAC) to the channel 1
-  // output compare.  TIM2_CR2, p574 18.4.2
-
+  // output compare.  TIM2_CR2, pp1007&8 26.4.2
   // This controls when TRGO is sent to downstream clocks
   timer_set_master_mode(TIM2, TIM_CR2_MMS_COMPARE_OC1REF);
 
   // And start the timer up
   timer_enable_counter(TIM2);
 }
-
 
 /**
  * \brief Initialize the DMA channel for DAC output
@@ -221,7 +219,7 @@ void dac_setup(uint16_t prescaler, uint32_t period, const uint8_t *waveform, uin
  *
  * This uses the current clock configuration to compute the value.  If
  * you change the system clock, the value returned here will be
- * invalid]
+ * invalid.
  */
 float dac_get_sample_rate(uint16_t prescaler, uint32_t period) {
   uint32_t ck_in = rcc_get_timer_clk_freq(TIM2);
@@ -234,5 +232,6 @@ float dac_get_sample_rate(uint16_t prescaler, uint32_t period) {
 void dma1_stream5_isr(void)
 {
 }
+
 
 /** \} */
