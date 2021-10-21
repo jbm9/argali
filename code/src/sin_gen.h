@@ -49,5 +49,5 @@ typedef struct sin_gen_request {
 uint8_t sin_gen_sin(float);
 sin_gen_result_t sin_gen_populate(sin_gen_request_t *, uint8_t *, uint16_t, uint32_t, uint32_t);
 sin_gen_result_t sin_gen_generate(sin_gen_request_t *);
-
+const char* sin_gen_result_name(sin_gen_result_t);
 /** \} */ // End doxygen group

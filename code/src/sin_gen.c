@@ -269,5 +269,21 @@ sin_gen_result_t sin_gen_generate(sin_gen_request_t *req) {
   return SIN_GEN_OKAY;
 }
 
+/**
+ * \brief Get a human readable version of a sin_gen_result_t
+ *
+ * \param res The sin_gen_result_t you want decoded
+ *
+ * \return NULL if the result is unknown, otherwise a pointer to the appropriate string
+ */
+const char* sin_gen_result_name(sin_gen_result_t res) {
+  switch(res) {
+  case SIN_GEN_OKAY: return "OKAY";
+  case SIN_GEN_INVALID: return "INVALID";
+  case SIN_GEN_UNDERSAMPLED: return "UNDERSAMPLED";
+  case SIN_GEN_TOO_SHORT: return "TOO_SHORT";
+  default: return NULL;
+  }
+}
 
 /** \} */ // End doxygen group
