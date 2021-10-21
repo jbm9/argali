@@ -1,3 +1,7 @@
 [submodule "code/libopencm3"]
 	path = code/libopencm3
 	url = https://github.com/libopencm3/libopencm3.git
+
+[submodule "code/external/Unity"]
+	path = code/external/Unity
+	url = https://github.com/ThrowTheSwitch/Unity
