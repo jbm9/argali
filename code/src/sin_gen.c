@@ -115,6 +115,7 @@ sin_gen_result_t sin_gen_populate(sin_gen_request_t *req,
   req->buf = buf;
   req->buflen = buflen;
   req->theta0 = SIN_THETA0;
+  req->scale = 1;
   req->f_tone = f_tone;
   req->f_sample = f_sample;
 
@@ -128,8 +129,19 @@ sin_gen_result_t sin_gen_populate(sin_gen_request_t *req,
  * \brief Get the appropriate entry from the sin table for the given angle
  *
  * \param theta Angle (radians) to get sin of
+ * \param scale A divisor on the scale of the waveform; use 1 to get full amplitude
+ *
+ * This outputs a sin value suitable for DAC output.  At higher
+ * frequencies, the DAC has a hard time keeping up with large-scale
+ * waves, so you can use the scale parameter to shrink the waveform
+ * (but it's still centered on 127).
+ *
+ * If you wish to add an offset option, please see the commit which
+ * first introduced the scale factor above.  The addition of an offset
+ * parameter should very closely parallel that one, including fixups
+ * to the populate function and the unit tests.
  */
-uint8_t sin_gen_sin(float theta) {
+uint8_t sin_gen_sin(float theta, uint8_t scale) {
   // cursor_pos = theta * 4*table_length/(2*pi) = theta*table_len/(pi/2)
   float cursor_pos_f = theta * SINE_TABLE_LENGTH/COS_THETA0;
   int ipart = cursor_pos_f;
@@ -151,8 +163,8 @@ uint8_t sin_gen_sin(float theta) {
   if (cursor_quadrant & 1) i = SINE_TABLE_LENGTH - 1 - i;
 
   if (cursor_quadrant > 1)
-    return 127-sin_table[i];
-  return 127+sin_table[i];
+    return 127-sin_table[i]/scale;
+  return 127+sin_table[i]/scale;
 }
 
 /**
@@ -255,7 +267,7 @@ sin_gen_result_t sin_gen_generate(sin_gen_request_t *req) {
   dtheta = 4*COS_THETA0 / samples_per_wave;
 
   for (int i = 0; i < req->result_len; i++) {
-    req->buf[i] = sin_gen_sin(theta);
+    req->buf[i] = sin_gen_sin(theta, req->scale);
     theta += dtheta;
   }
 

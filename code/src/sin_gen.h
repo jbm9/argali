@@ -37,6 +37,7 @@ typedef struct sin_gen_request {
   uint8_t *buf; //!< The buffer to fill, must be non-NULL
   uint16_t buflen; //!< The length of the buffer
   float theta0; //!< (radians) The initial phase angle (0 for sin, pi/2 for cos)
+  int scale; //!< Scaling factor to shrink the amplitude by (see sin_gen_sin())
 
   uint32_t f_tone; //!< The frequency being requested
   uint32_t f_sample; //!< The sampling rate (usually your DAC output frequency)
@@ -46,7 +47,7 @@ typedef struct sin_gen_request {
 } sin_gen_request_t;
 
 
-uint8_t sin_gen_sin(float);
+uint8_t sin_gen_sin(float, uint8_t);
 sin_gen_result_t sin_gen_populate(sin_gen_request_t *, uint8_t *, uint16_t, uint32_t, uint32_t);
 sin_gen_result_t sin_gen_generate(sin_gen_request_t *);
 const char* sin_gen_result_name(sin_gen_result_t);

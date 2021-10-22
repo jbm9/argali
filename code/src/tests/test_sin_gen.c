@@ -50,10 +50,11 @@ void tearDown(void) {}
 //////////////////////////////////////////////////////////////////////
 // Helper macros
 
-#define TEST_ASSERT_SG_REQ_EQ(ebuf,ebuflen,etheta0,ef_tone,ef_sample) { \
+#define TEST_ASSERT_SG_REQ_EQ(ebuf,ebuflen,etheta0,escale,ef_tone,ef_sample) { \
     TEST_ASSERT_EQUAL(ebuf, test_req->buf);				\
     TEST_ASSERT_EQUAL(ebuflen, test_req->buflen);			\
     TEST_ASSERT_FLOAT_WITHIN(1e-9, etheta0, test_req->theta0);		\
+    TEST_ASSERT_EQUAL(escale, test_req->scale);				\
     TEST_ASSERT_EQUAL(ef_tone, test_req->f_tone);			\
     TEST_ASSERT_EQUAL(ef_sample, test_req->f_sample);			\
   }
@@ -78,16 +79,16 @@ void test_populate_invalid(void) {
   // No request test is possible here
 
   TEST_ASSERT_EQUAL(SIN_GEN_INVALID, sin_gen_populate(test_req, NULL, dummy_buflen, 1000, 100000));
-  TEST_ASSERT_SG_REQ_EQ(NULL, dummy_buflen, 0, 1000, 100000);
+  TEST_ASSERT_SG_REQ_EQ(NULL, dummy_buflen, 0, 1, 1000, 100000);
 
   TEST_ASSERT_EQUAL(SIN_GEN_INVALID, sin_gen_populate(test_req, dummy_buf, 0, 1000, 100000));
-  TEST_ASSERT_SG_REQ_EQ(dummy_buf, 0, 0, 1000, 100000);
+  TEST_ASSERT_SG_REQ_EQ(dummy_buf, 0, 0, 1, 1000, 100000);
 
   TEST_ASSERT_EQUAL(SIN_GEN_INVALID, sin_gen_populate(test_req, dummy_buf, dummy_buflen, 0, 100000));
-  TEST_ASSERT_SG_REQ_EQ(dummy_buf, dummy_buflen, 0, 0, 100000);
+  TEST_ASSERT_SG_REQ_EQ(dummy_buf, dummy_buflen, 0, 1, 0, 100000);
 
   TEST_ASSERT_EQUAL(SIN_GEN_INVALID, sin_gen_populate(test_req, dummy_buf, dummy_buflen, 1000, 0));
-  TEST_ASSERT_SG_REQ_EQ(dummy_buf, dummy_buflen, 0, 1000, 0);
+  TEST_ASSERT_SG_REQ_EQ(dummy_buf, dummy_buflen, 0, 1, 1000, 0);
 }
 
 /**
@@ -95,7 +96,7 @@ void test_populate_invalid(void) {
  */
 void test_populate_happy_path(void) {
   TEST_ASSERT_EQUAL(SIN_GEN_OKAY, sin_gen_populate(test_req, dummy_buf, dummy_buflen, 1000, 100000));
-  TEST_ASSERT_SG_REQ_EQ(dummy_buf, dummy_buflen, 0, 1000, 100000);
+  TEST_ASSERT_SG_REQ_EQ(dummy_buf, dummy_buflen, 0, 1, 1000, 100000);
 }
 
 //////////////////////////////
@@ -104,11 +105,11 @@ void test_populate_happy_path(void) {
 void test_sin(void) {
 
   // Smoke test of "zeros" (we have a 127 unit DC offset)
-  TEST_ASSERT_EQUAL(127, sin_gen_sin(0.0));
-  TEST_ASSERT_EQUAL(127, sin_gen_sin(3.14));
-  TEST_ASSERT_EQUAL(127, sin_gen_sin(6.28));
-  TEST_ASSERT_EQUAL(127, sin_gen_sin(-6.28));
-  TEST_ASSERT_EQUAL(127, sin_gen_sin(-628.32));
+  TEST_ASSERT_EQUAL(127, sin_gen_sin(0.0, 1));
+  TEST_ASSERT_EQUAL(127, sin_gen_sin(3.14, 1));
+  TEST_ASSERT_EQUAL(127, sin_gen_sin(6.28, 1));
+  TEST_ASSERT_EQUAL(127, sin_gen_sin(-6.28, 1));
+  TEST_ASSERT_EQUAL(127, sin_gen_sin(-628.32, 1));
 
 
   char errmsg[256];
@@ -124,12 +125,46 @@ void test_sin(void) {
 
     expected = 127 + (quadrant > 1 ? -expected : expected); // yuck yet yum.
 
-    uint8_t got = sin_gen_sin(theta);
+    uint8_t got = sin_gen_sin(theta, 1);
 
     snprintf(errmsg, 255, "Case %d/%0.3f (%d)", i, theta, offset);
 
     TEST_ASSERT_EQUAL_MESSAGE(expected, got, errmsg);
+  }
+}
 
+
+void test_sin_scaled(void) {
+
+  // Smoke test of "zeros" (we have a 127 unit DC offset)
+  TEST_ASSERT_EQUAL(127, sin_gen_sin(0.0, 2));
+  TEST_ASSERT_EQUAL(127, sin_gen_sin(3.14, 4));
+  TEST_ASSERT_EQUAL(127, sin_gen_sin(6.28, 8));
+  TEST_ASSERT_EQUAL(127, sin_gen_sin(-6.28, 127));
+  TEST_ASSERT_EQUAL(127, sin_gen_sin(-628.32, 255));
+
+
+  char errmsg[256];
+
+  for (uint8_t scale = 2; scale < 200; scale++) {
+    for (int i = 0; i < 1024; i++) {
+      float theta = COS_THETA0 * i / 256;
+
+      int quadrant = i / 256;
+      int offset = i % 256;
+
+      if (quadrant % 2) offset = 255 - offset;
+
+      uint8_t expected = expected_sin_table[offset] / scale;
+
+      expected = 127 + (quadrant > 1 ? -expected : expected); // yuck yet yum.
+
+      uint8_t got = sin_gen_sin(theta, scale);
+
+      snprintf(errmsg, 255, "Scale=%d case %d/%0.3f (%d)", scale, i, theta, offset);
+
+      TEST_ASSERT_EQUAL_MESSAGE(expected, got, errmsg);
+    }
   }
 }
 
@@ -225,7 +260,7 @@ void test_generate_happy_path(void) {
   }
 
   TEST_ASSERT_EQUAL(SIN_GEN_OKAY, sin_gen_populate(test_req, dummy_buf, 1024, 1, 1024));
-  TEST_ASSERT_SG_REQ_EQ(dummy_buf, dummy_buflen, 0, 1, 1024);
+  TEST_ASSERT_SG_REQ_EQ(dummy_buf, dummy_buflen, 0, 1, 1, 1024);
 
   TEST_ASSERT_EQUAL(SIN_GEN_OKAY, sin_gen_generate(test_req));
   TEST_ASSERT_SG_RES_EQ(1024, 0);
@@ -251,7 +286,7 @@ void test_generate_downsample2(void) {
   }
 
   TEST_ASSERT_EQUAL(SIN_GEN_OKAY, sin_gen_populate(test_req, dummy_buf, 512, 2, 1024));
-  TEST_ASSERT_SG_REQ_EQ(dummy_buf, 512, 0, 2, 1024);
+  TEST_ASSERT_SG_REQ_EQ(dummy_buf, 512, 0, 1, 2, 1024);
 
   TEST_ASSERT_EQUAL(SIN_GEN_OKAY, sin_gen_generate(test_req));
   TEST_ASSERT_SG_RES_EQ(512, 0);
@@ -289,7 +324,7 @@ void test_generate_downsample3(void) {
   }
 
   TEST_ASSERT_EQUAL(SIN_GEN_OKAY, sin_gen_populate(test_req, dummy_buf, 1024, 3, 1024));
-  TEST_ASSERT_SG_REQ_EQ(dummy_buf, 1024, 0, 3, 1024);
+  TEST_ASSERT_SG_REQ_EQ(dummy_buf, 1024, 0, 1, 3, 1024);
 
   TEST_ASSERT_EQUAL(SIN_GEN_OKAY, sin_gen_generate(test_req));
   TEST_ASSERT_SG_RES_EQ(341, 0.00607457);
@@ -306,6 +341,7 @@ int main(int argc, char *argv[]) {
   RUN_TEST(test_populate_happy_path);
 
   RUN_TEST(test_sin);
+  RUN_TEST(test_sin_scaled);
 
   RUN_TEST(test_generate_invalid_requests);
   RUN_TEST(test_generate_undersampling);
