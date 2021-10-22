@@ -48,21 +48,24 @@ static void console_line_handler(char *line, uint32_t line_len) {
 }
 
 static uint8_t dac_buf[256]; //!< The waveform to emit when bored
+
 /**
  * \brief Set up the DAC waveform to emit when bored
  */
 static void dac_waveform_setup(void) {
 #define WAVEFORM_LEN 256
   int i;
-  uint16_t prescaler = 10;
-  uint32_t period = 100;
+  uint16_t prescaler = 1;
+  uint32_t period = 9;
 
   float dac_sample_rate = dac_get_sample_rate(prescaler, period);
 
   sin_gen_result_t res;
   sin_gen_request_t req;
 
-  res = sin_gen_populate(&req, dac_buf, WAVEFORM_LEN, 1000, dac_sample_rate);
+  int f_tone = 20000;
+
+  res = sin_gen_populate(&req, dac_buf, WAVEFORM_LEN, f_tone, dac_sample_rate);
   if (SIN_GEN_OKAY != res) {
     logline(LEVEL_ERROR, "Failed to populate sin_gen request, bailing on DAC setup: %s!",
 	    sin_gen_result_name(res));
@@ -71,12 +74,13 @@ static void dac_waveform_setup(void) {
 
   res = sin_gen_generate(&req);
   if (SIN_GEN_OKAY != res) {
-    logline(LEVEL_ERROR, "Failed to generate sine tone, bailing on DAC setup: %s!",
-	    sin_gen_result_name(res));
+    logline(LEVEL_INFO, "DAC sample rate: %ld sps", (int)dac_sample_rate);
+    logline(LEVEL_ERROR, "Failed to generate sine tone of %ld Hz, bailing on DAC setup: %s!",
+	    f_tone, sin_gen_result_name(res));
     return;
   }
 
-  logline(LEVEL_INFO, "DAC sample rate: %ld, expected freq: %ld (%d samples)",
+  logline(LEVEL_INFO, "DAC sample rate: %ld, expected freq: %ld Hz (%d samples long)",
 	  (int)dac_sample_rate,
 	  (int)(dac_sample_rate/req.result_len),
 	  req.result_len);
