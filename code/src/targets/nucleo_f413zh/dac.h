@@ -2,11 +2,11 @@
 
 /**
  * \file dac.h
- * \brief Header for DAC driver (Nucleo F767ZI)
+ * \brief Header for DAC driver (Nucleo F413ZH)
  */
 
 /**
- * \addtogroup nucleo_f767zi_DAC
+ * \addtogroup nucleo_f413zh_dac
  * \{
  */
 
@@ -25,5 +25,8 @@
 
 void dac_setup(uint16_t, uint32_t, const uint8_t*, uint16_t);
 float dac_get_sample_rate(uint16_t, uint32_t);
+
+void dac_start(void);
+void dac_stop(void);
 
 /** \} */

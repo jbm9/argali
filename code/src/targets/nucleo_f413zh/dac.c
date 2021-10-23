@@ -1,12 +1,12 @@
 /**
  * \file dac.c
- * \brief DAC driver (Nucleo F767ZI)
+ * \brief DAC driver (Nucleo F413ZH)
  */
 
 #include "dac.h"
 
 /**
- * \defgroup nucleo_f767zi_DAC DAC Driver (Nucleo F767ZI)
+ * \defgroup nucleo_f413zh_dac DAC Driver (Nucleo F413ZH)
  * \{
  */
 
@@ -103,7 +103,7 @@ static void timer_setup(uint16_t prescaler, uint32_t period)
   // Set the timer trigger output (for the DAC) to the channel 1
   // output compare.  TIM2_CR2, p574 18.4.2
 
-  // This controls when TRGO is sent to downstream clocks
+  // This controls when TRGO is sent to downstream clocks, also TIM_CR2
   timer_set_master_mode(TIM2, TIM_CR2_MMS_COMPARE_OC1REF);
 
   // And start the timer up
@@ -147,7 +147,6 @@ static void dma_setup(const uint8_t *waveform, uint16_t npoints)
   dma_set_number_of_data(DMA1, DMA_STREAM5, npoints);
   dma_disable_transfer_complete_interrupt(DMA1, DMA_STREAM5);
   dma_channel_select(DMA1, DMA_STREAM5, DMA_SxCR_CHSEL_7);
-  dma_enable_stream(DMA1, DMA_STREAM5);
 }
 
 /**
@@ -161,6 +160,8 @@ static void dma_setup(const uint8_t *waveform, uint16_t npoints)
  * At a high level: this sets up the DAC to DMA a buffer in a loop,
  * driven by a Timer peripheral.  Internally, we set up the timer,
  * then configure DMA, and finally connect it to the DAC.
+ *
+ * To begin the DAC output, you will need to call dac_start().
  *
  * In more detail:
  *
@@ -197,12 +198,11 @@ static void dma_setup(const uint8_t *waveform, uint16_t npoints)
  * waveforms.
  *
  */
-void dac_setup(uint16_t prescaler, uint32_t period, const uint8_t *waveform, uint16_t npoints)
-{
+void dac_setup(uint16_t prescaler, uint32_t period, const uint8_t *waveform, uint16_t npoints) {
   gpio_setup();
   timer_setup(prescaler, period);
   dma_setup(waveform, npoints);
-  
+
   /* Enable the DAC clock on APB1 */
   rcc_periph_clock_enable(RCC_DAC);
   /* Setup the DAC channel 1, with timer 2 as trigger source.
@@ -210,7 +210,29 @@ void dac_setup(uint16_t prescaler, uint32_t period, const uint8_t *waveform, uin
   dac_trigger_enable(DAC1, DAC_CHANNEL1);
   dac_set_trigger_source(DAC1, DAC_CR_TSEL1_T2);
   dac_dma_enable(DAC1, DAC_CHANNEL1);
+}
+
+
+/**
+ * Starts the DAC output up
+ *
+ * This starts/restarts the DAC to output the current waveform buffer.
+ * It does not do much to guarantee the present state/configuration of
+ * the DAC, though.  You will need to do dac_setup() first.
+ */
+void dac_start(void) {
+  dma_enable_stream(DMA1, DMA_STREAM5);
   dac_enable(DAC1, DAC_CHANNEL1);
+}
+
+/**
+ * Stop the DAC output
+ *
+ * This stops the DAC output.
+ */
+void dac_stop(void) {
+  dac_disable(DAC1, DAC_CHANNEL1);
+  dma_disable_stream(DMA1, DMA_STREAM5);
 }
 
 /**
@@ -225,7 +247,7 @@ void dac_setup(uint16_t prescaler, uint32_t period, const uint8_t *waveform, uin
  */
 float dac_get_sample_rate(uint16_t prescaler, uint32_t period) {
   uint32_t ck_in = rcc_get_timer_clk_freq(TIM2);
-  return ((float)ck_in/2)/(prescaler+1)/(period+1);
+  return (ck_in/2)/(prescaler+1)/(period+1);
 }
 
 /**
