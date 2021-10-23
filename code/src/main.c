@@ -49,16 +49,19 @@ static void console_line_handler(char *line, uint32_t line_len) {
 
 static uint8_t dac_buf[256]; //!< The waveform to emit when bored
 
+static float dac_sample_rate; //!< The sampling rate of the DAC
+static float adc_sample_rate; //!< The sampling rate of the ADC
+
 /**
  * \brief Set up the DAC waveform to emit when bored
  */
 static void dac_waveform_setup(void) {
 #define WAVEFORM_LEN 256
   int i;
-  uint16_t prescaler = 1;
-  uint32_t period = 9;
+  uint16_t prescaler = 9;
+  uint32_t period = 2;
 
-  float dac_sample_rate = dac_get_sample_rate(prescaler, period);
+  dac_sample_rate = dac_get_sample_rate(prescaler, period);
 
   sin_gen_result_t res;
   sin_gen_request_t req;
@@ -71,6 +74,7 @@ static void dac_waveform_setup(void) {
 	    sin_gen_result_name(res));
     return;
   }
+  req.scale = 2;
 
   res = sin_gen_generate(&req);
   if (SIN_GEN_OKAY != res) {
@@ -110,7 +114,12 @@ int main(void) {
 
   current_time = 0;
   tamo_state_init(&tamo_state, current_time);
-  adc_setup(adc_buf, ADC_NUM_SAMPLES);
+
+  adc_sample_rate = adc_setup(adc_buf, ADC_NUM_SAMPLES, dac_sample_rate);
+  logline(LEVEL_INFO, "Configured ADC at %ld samples per second", (uint32_t)adc_sample_rate);
+  if (0 == adc_sample_rate) {
+    logline(LEVEL_ERROR, "Could not set up ADC to match DAC's rate of %ld!", (uint32_t)dac_sample_rate);
+  }
 
   while (1) {
     // Run this loop at about 10Hz, and poll for inputs.  (Huge antipattern!)
@@ -124,12 +133,19 @@ int main(void) {
       }
 
       if (user_present) {
-	adc_pause();
+	uint32_t i0;
+
+	i0 = ADC_NUM_SAMPLES - adc_pause();
 	led_red_on();
-	// printf("adc_isrs = %ld / %d %d %d %d\n", adc_isrs, adc_buf[0], adc_buf[10], adc_buf[20], adc_buf[buflen/2]);
-	for (int i = 0; i < ADC_NUM_SAMPLES; i++)
-	  //	console_send_blocking(adc_buf[i]);
-	  printf("%d ", adc_buf[i]);
+	
+	for (int k = 0; k < ADC_NUM_SAMPLES; k++) {
+	  int i = (i0 + k) % ADC_NUM_SAMPLES;
+
+	  printf("%3d ", adc_buf[i]);
+	  if (k % 32 == 31) {
+	    printf("\n");
+	  }
+	}
 
 	printf("\n");
 	adc_unpause();
