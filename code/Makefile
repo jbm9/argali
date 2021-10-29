@@ -12,7 +12,7 @@ TDIR = src/targets/$(TARGET)/
 # matches exactly across the many targets you might have.
 #
 # This should just be files in the "application" code.
-CFILES = main.c syscalls.c tamo_state.c logging.c sin_gen.c
+CFILES = main.c syscalls.c tamo_state.c logging.c sin_gen.c dtmf.c
 
 ######################################################################
 # You shouldn't have to edit anything below here.
@@ -44,6 +44,12 @@ INCLUDES += $(patsubst %,-I%, . $(TDIR))
 
 OPENCM3_DIR=./libopencm3/
 
+# Inject our version string into a cpp #define
+CPPFLAGS += -DARGALI_VERSION=$(ARGALI_VERSION)
+
+# We need libm for atan2()
+LDLIBS += -lm
+
 include $(OPENCM3_DIR)/mk/genlink-config.mk
 include libopencm3_rules.mk
 include $(OPENCM3_DIR)/mk/genlink-rules.mk
@@ -51,7 +57,5 @@ include $(OPENCM3_DIR)/mk/genlink-rules.mk
 openocd-daemon:
 	$(OOCD) -f $(OOCD_FILE)
 
-# Inject our version string into a cpp #define
-TGT_CPPFLAGS += -DARGALI_VERSION=$(ARGALI_VERSION)
 
 include host_side.mk

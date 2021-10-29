@@ -38,6 +38,7 @@ LINK=gcc
 DEPEND=gcc -MM -MG -MF
 CFLAGS=-I. -I$(PATHU) -I$(PATHS) -g -O0 -DTEST_UNITY
 
+
 RESULTS = $(patsubst $(PATHT)test_%.c,$(PATHR)test_%.txt,$(SRCT) )
 
 PASSED = `grep -s PASS $(PATHR)*.txt`
@@ -64,7 +65,8 @@ $(PATHR)%.txt: $(PATHB)%.$(TARGET_EXTENSION)
 	-./$< > $@ 2>&1
 
 $(PATHB)test_%.$(TARGET_EXTENSION):  $(PATHO)test_%.o $(PATHO)%.o $(PATHU)unity.o #$(PATHD)test_%.d
-	$(LINK) -o $@ $^
+	$(LINK) -o $@ $^ -lm
+# Note janky addition of -lm above for the DTMF tests
 
 $(PATHO)%.o:: $(PATHT)%.c
 	$(COMPILE) $(CFLAGS) $< -o $@
