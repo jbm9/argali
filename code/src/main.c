@@ -19,14 +19,10 @@
 #include "syscalls.h"
 #include "tamo_state.h"
 #include "sin_gen.h"
+#include "pi_reciter.h"
 
-volatile int adc_counts = 0;
-static int last_adc_counts = 0;
 
-/*
- * First, a dirty hack to get our version string set up.
- */
-
+// First, a dirty hack to get our version string set up.
 #define xstr(x) str(x)  //!< Stage 2 of a janky two-stage macro-stringifier
 #define str(x) #x       //!< Stage 1 of a janky two-stage macro-stringifier
 #ifndef ARGALI_VERSION
@@ -114,53 +110,32 @@ int main(void) {
 
   current_time = 0;
   tamo_state_init(&tamo_state, current_time);
+  pi_reciter_init();
 
-  adc_sample_rate = adc_setup(adc_buf, ADC_NUM_SAMPLES, dac_sample_rate);
-  logline(LEVEL_INFO, "Configured ADC at %ld samples per second", (uint32_t)adc_sample_rate);
+  uint32_t desired_rate = 10000;
+  adc_sample_rate = adc_setup(adc_buf, ADC_NUM_SAMPLES, desired_rate);
+  logline(LEVEL_INFO, "Configured ADC at %d samples per second",
+	  (uint32_t)adc_sample_rate);
   if (0 == adc_sample_rate) {
-    logline(LEVEL_ERROR, "Could not set up ADC to match DAC's rate of %ld!", (uint32_t)dac_sample_rate);
+    logline(LEVEL_ERROR, "Could not set up ADC to desired rate of %d Hz!",
+	    (uint32_t)desired_rate);
   }
 
   while (1) {
     // Run this loop at about 10Hz, and poll for inputs.  (Huge antipattern!)
     for (int j = 0; j < 10; j++) {
       bool user_present = button_poll();
-
-#if 1
-      if (adc_counts != last_adc_counts) {
-	logline(LEVEL_INFO, "ADC incr: %d -> %d", adc_counts, last_adc_counts);
-	last_adc_counts = adc_counts;
-      }
-
-      if (user_present) {
-	uint32_t i0;
-
-	i0 = ADC_NUM_SAMPLES - adc_pause();
-	led_red_on();
-	
-	for (int k = 0; k < ADC_NUM_SAMPLES; k++) {
-	  int i = (i0 + k) % ADC_NUM_SAMPLES;
-
-	  printf("%3d ", adc_buf[i]);
-	  if (k % 32 == 31) {
-	    printf("\n");
-	  }
-	}
-
-	printf("\n");
-	adc_unpause();
-	led_red_off();
-      }
-#endif
-
       if (tamo_state_update(&tamo_state, current_time, user_present)) {
         logline(LEVEL_INFO, "Transition to %s: %d",
 		tamo_emotion_name(tamo_state.current_emotion), user_present);
 
 	switch(tamo_state.current_emotion) {
 	case TAMO_BORED:
-	    break;
+	  uint8_t next_digit = pi_reciter_next_digit();
+	  dac_start();
+	  break;
 	default:
+	  dac_stop();
 	  break;
 	}
       }
