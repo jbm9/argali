@@ -168,6 +168,86 @@ uint8_t sin_gen_sin(float theta, uint8_t scale) {
 }
 
 /**
+ * (Internal) This is used to qualify the inputs to sin_gen_generate()
+ * and sin_gen_generate_fill().
+ *
+ * \param req[in,out] The request, as specified in sin_gen_generate()
+ *
+ * \returns SIN_GEN_OKAY if input is good, or the return value that
+ * sin_gen_generaate() should return otherwise.
+ */
+static sin_gen_result_t sin_gen_qualify(sin_gen_request_t *req) {
+  if (req == NULL) {
+    return SIN_GEN_INVALID;
+  }
+
+  if ((req->buf == NULL) || (req->buflen == 0)) {
+    return SIN_GEN_INVALID;
+  }
+
+  if ((req->f_tone == 0) || (req->f_sample == 0)) {
+    return SIN_GEN_INVALID;
+  }
+
+  if (req->f_tone >= req->f_sample/2) {
+    return SIN_GEN_UNDERSAMPLED;
+  }
+
+  return SIN_GEN_OKAY;
+}
+
+/**
+ * (Internal) Fulfil a request for N cycles of a sine wave in the request
+ *
+ * \param req[in,out] The request, as specified in sin_gen_generate()
+ * \param n_cycles The number of cycles to fill; 0 for full buffer
+ *
+ * Note that n_cycles is not honored if it is longer than the full
+ * buffer, and we do not communicate that error state up.
+ *
+ * \returns SIN_GEN_OKAY if input is good, or the return value that
+ * sin_gen_generaate() should return otherwise.
+ */
+static sin_gen_result_t sin_gen_fulfill(sin_gen_request_t *req, uint8_t n_cycles) {
+  float samples_per_wave;
+  float theta;
+  float dtheta; // radians per sample to generate our tone
+
+
+  samples_per_wave = req->f_sample / req->f_tone;
+
+  // Compute how many samples to fill in
+  if (0 == n_cycles) {
+    // Special case: just fill the whole thing up
+    req->result_len = req->buflen;
+  } else {
+    req->result_len = (uint16_t)(n_cycles * samples_per_wave);
+    if (req->result_len > req->buflen) {
+      req->result_len = req->buflen;
+    }
+  }
+
+  req->phase_error = COS_THETA0*4 * (1 - (float)req->result_len/samples_per_wave);
+
+  // Now actually fill in the table
+  theta = req->theta0;
+  dtheta = 4*COS_THETA0 / samples_per_wave;
+
+  for (int i = 0; i < req->result_len; i++) {
+    req->buf[i] = sin_gen_sin(theta, req->scale);
+    theta += dtheta;
+  }
+
+  // After filling everything out, check if we should return TOO_SHORT
+  if (samples_per_wave > req->buflen) {
+    req->result_len = req->buflen;
+    return SIN_GEN_TOO_SHORT;
+  }
+
+  return SIN_GEN_OKAY;
+}
+
+/**
  * \brief Request the generation of a single sine cycle
  *
  * \param[IN,OUT] req The request, which also contains the result
@@ -225,60 +305,43 @@ uint8_t sin_gen_sin(float theta, uint8_t scale) {
  *
  */
 sin_gen_result_t sin_gen_generate(sin_gen_request_t *req) {
-  float samples_per_wave;
-  float theta;
-  float dtheta; // radians per sample to generate our tone
-
-  if (req == NULL) {
-    return SIN_GEN_INVALID;
+  // If you refactor this function, see the comment in
+  // sin_gen_generate_fill() wrt test coverage: you will need to
+  // extend the unit tests in a kind of tedious way if these two
+  // codepaths diverge.
+  sin_gen_result_t qualify_result = sin_gen_qualify(req);
+  if (SIN_GEN_OKAY != qualify_result) {
+    return qualify_result;
   }
 
-  if ((req->buf == NULL) || (req->buflen == 0)) {
-    return SIN_GEN_INVALID;
+  sin_gen_result_t fulfill_result = sin_gen_fulfill(req, 1);
+  return fulfill_result;
+}
+
+/**
+ * Request a buffer to be filled up to the very end, regardless of
+ * phase error
+ *
+ * See sin_gen_generate() for most of the details.
+ *
+ * This version simply continues running up until the end of the buffer.
+ *
+ * Use of this is *STRONGLY DISCOURAGED* unless you know what you are
+ * signing up for.  You will almost certainly get nasty artifacts at
+ * the end of your buffer unless you have formulated your input buflen
+ * to minimize them yourself.
+ */
+sin_gen_result_t sin_gen_generate_fill(sin_gen_request_t *req) {
+  // Note that the unit tests assume that this is tied at the hip to
+  // sin_gen_generate().  If you change that, you will need to extend
+  // coverage on the unit tests to explicitly test these codepaths
+  sin_gen_result_t qualify_result = sin_gen_qualify(req);
+  if (SIN_GEN_OKAY != qualify_result) {
+    return qualify_result;
   }
 
-  if ((req->f_tone == 0) || (req->f_sample == 0)) {
-    return SIN_GEN_INVALID;
-  }
-
-  if (req->f_tone >= req->f_sample/2) {
-    return SIN_GEN_UNDERSAMPLED;
-  }
-
-  // Compute how long this buffer needs to be.
-  samples_per_wave = req->f_sample / req->f_tone;
-
-  req->result_len = (uint16_t)samples_per_wave;
-  if (samples_per_wave > req->buflen) {
-    req->result_len = req->buflen;
-  }
-
-  req->phase_error = COS_THETA0*4 * (1 - (float)req->result_len/samples_per_wave);
-
-  // \todo Evaluate extending by one sample if that reduces phase error
-  //
-  // If we have one more sample free before the end of the buffer, it
-  // may result in less phase error to extend the buffer one cycle and
-  // fill in there.
-
-
-  // Now actually fill in the table
-  theta = req->theta0;
-  dtheta = 4*COS_THETA0 / samples_per_wave;
-
-  for (int i = 0; i < req->result_len; i++) {
-    req->buf[i] = sin_gen_sin(theta, req->scale);
-    theta += dtheta;
-  }
-
-  // After filling everything out, check if we should return TOO_SHORT
-  if (samples_per_wave > req->buflen) {
-    req->result_len = req->buflen;
-    return SIN_GEN_TOO_SHORT;
-  }
-
-
-  return SIN_GEN_OKAY;
+  sin_gen_result_t fulfill_result = sin_gen_fulfill(req, 0);
+  return fulfill_result;
 }
 
 /**

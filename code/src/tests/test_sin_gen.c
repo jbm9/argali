@@ -267,6 +267,33 @@ void test_generate_happy_path(void) {
   TEST_ASSERT_EQUAL_UINT8_ARRAY(expected_wav, test_req->buf, 1024);
 }
 
+
+/**
+ * Run a happy-path request, mostly as a smoke test
+ */
+void test_generate_fill__happy_path(void) {
+
+  // Generate a 1:1 copy of our sine wave table
+  uint8_t expected_wav[1024];
+
+  for (int i = 0; i < 1024; i++) {
+    int k = (4*i) % 1024;
+    int quadrant = k / 256;
+    int offset = k % 256;
+
+    if (quadrant % 2) offset = 255 - offset;
+
+    int8_t j = expected_sin_table[offset];
+    expected_wav[i] = 127 + (quadrant > 1 ? -j : j);
+  }
+
+  TEST_ASSERT_EQUAL(SIN_GEN_OKAY, sin_gen_populate(test_req, dummy_buf, 1024, 4, 1024));
+  TEST_ASSERT_SG_REQ_EQ(dummy_buf, dummy_buflen, 0, 1, 4, 1024);
+
+  TEST_ASSERT_EQUAL(SIN_GEN_OKAY, sin_gen_generate_fill(test_req));
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(expected_wav, test_req->buf, 1024);
+}
+
 /**
  * Test clean integer downsampling of our table
  */
@@ -274,6 +301,11 @@ void test_generate_downsample2(void) {
 
   // Generate a 1:1 copy of our sine wave table
   uint8_t expected_wav[1024];
+
+  // 0xFF is unattainable by our sine generator, so makes a good
+  // sentinel for testing.
+  memset(expected_wav, 0xff, 1024);
+  memset(test_req->buf, 0xff, 1024);
 
   for (int i = 0; i < 512; i++) {
     int quadrant = i / 128;
@@ -290,7 +322,7 @@ void test_generate_downsample2(void) {
 
   TEST_ASSERT_EQUAL(SIN_GEN_OKAY, sin_gen_generate(test_req));
   TEST_ASSERT_SG_RES_EQ(512, 0);
-  TEST_ASSERT_EQUAL_UINT8_ARRAY(expected_wav, test_req->buf, 512);
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(expected_wav, test_req->buf, 1024);
 }
 
 
@@ -348,6 +380,7 @@ int main(int argc, char *argv[]) {
   RUN_TEST(test_generate_too_short);
 
   RUN_TEST(test_generate_happy_path);
+  RUN_TEST(test_generate_fill__happy_path);
   RUN_TEST(test_generate_downsample2);
   RUN_TEST(test_generate_downsample3);
 
