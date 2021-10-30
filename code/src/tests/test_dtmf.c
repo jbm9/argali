@@ -58,15 +58,15 @@ void tearDown(void) {}
 // Helper macros
 
 
-void button_down(uint8_t symbol) {
-  printf("Got button down! %x\n", symbol);
+void button_down(uint8_t symbol, float power) {
+  printf("Got button down! %c: power=%f (threshold would be %f)\n", symbol, power, sqrt(power));
   rx_down[rx_down_cursor] = symbol;
   rx_down_cursor++;
   rx_down[rx_down_cursor] = 0; // Make sure we have a NUL
 }
 
 void button_up(uint8_t symbol, float dt) {
-  printf("Got button up! %x: %0.4ff\n", symbol, dt);
+  printf("Got button up! %c: %0.4ff\n", symbol, dt);
   rx_up[rx_up_cursor] = symbol;
   rx_up_cursor++;
   rx_up[rx_up_cursor] = 0; // Make sure we have a NUL
@@ -79,13 +79,13 @@ void button_up(uint8_t symbol, float dt) {
 void test_happy_path(void) {
   const int buf_stride = 200;
 
-  dtmf_init(FIXTURE_DTMF_FS, 0.2, button_down, button_up);
+  dtmf_init(FIXTURE_DTMF_FS, 0.5, button_down, button_up);
 
   for (int i = 0; i < FIXTURE_DTMF_BUFLEN; i+= buf_stride) {
     uint16_t l = FIXTURE_DTMF_BUFLEN - i;
     l = (l > buf_stride ? buf_stride : l);
 
-    dtmf_process(fixture_dtmf_buffer+i, l);
+    dtmf_process((const uint8_t*)fixture_dtmf_buffer+i, l);
   }
   dtmf_process(NULL, 0);
 
@@ -170,7 +170,7 @@ void test_all_zeros(void) {
   memset(zeros, 0, FIXTURE_DTMF_BUFLEN);
 
 
-  dtmf_init(FIXTURE_DTMF_FS, 0.4, button_down, button_up);
+  dtmf_init(FIXTURE_DTMF_FS, 0.5, button_down, button_up);
 
   for (int i = 0; i < FIXTURE_DTMF_BUFLEN; i+= buf_stride) {
     uint16_t l = FIXTURE_DTMF_BUFLEN - i;

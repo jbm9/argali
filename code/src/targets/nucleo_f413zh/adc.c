@@ -103,6 +103,8 @@
 #include "leds.h"
 #include "logging.h"
 
+#include "dtmf.h"
+
 //////////////////////////////////////////////////////////////////////
 // Debug Macros
 
@@ -302,6 +304,9 @@ static void adc_setup_adc(uint8_t *channels, uint8_t n_channels) {
 /**
  * \brief Brings up the DMA with a configuration for our ADC.
  *
+ * Note that this treats your buffer as a contiguous unit for two
+ * half-length buffers.
+ *
  * This does a full reset of the peripheral, then follows the flow
  * found in RM0430r8 p232, 9.3.18 "Stream configuration procedure"
  */
@@ -318,8 +323,9 @@ static void adc_setup_dma(uint8_t *buf, const uint32_t buflen) {
   dma_set_peripheral_address(DMA2, DMA_STREAM0,
 			     (uint32_t)&ADC_DR(ADC1));
 
-  // 3. Set the memory address in DMA_SxMA0R
+  // 3. Set the memory address in DMA_SxMA0R (and SxMA1R)
   dma_set_memory_address(DMA2, DMA_STREAM0, (uint32_t) buf);
+  dma_set_memory_address_1(DMA2, DMA_STREAM0, (uint32_t) (buf+buflen/2));
 
   // 4. Configure the data items to transfer
   dma_set_number_of_data(DMA2, DMA_STREAM0, buflen);
@@ -343,6 +349,8 @@ static void adc_setup_dma(uint8_t *buf, const uint32_t buflen) {
   dma_set_memory_size(DMA2, DMA_STREAM0, DMA_SxCR_MSIZE_8BIT);
 
   dma_enable_circular_mode(DMA2, DMA_STREAM0);
+
+  dma_enable_double_buffer_mode(DMA2, DMA_STREAM0);
   dma_enable_transfer_complete_interrupt(DMA2, DMA_STREAM0);
 
   nvic_enable_irq(NVIC_DMA2_STREAM0_IRQ);
@@ -407,7 +415,7 @@ void adc_unpause(void) {
  * \returns The actual sampling rate that was obtained
  */
 float adc_setup(uint8_t *buff, const uint32_t buflen) {
-  uint16_t prescaler = 99;
+  uint16_t prescaler = 104;
   uint32_t period = 49;
 
   uint8_t channels[1] = {0};
@@ -450,13 +458,28 @@ float adc_get_sample_rate(uint16_t prescaler, uint32_t period) {
  * This is currently only used to clear the TCIF flag when transfers
  * are complete.  See RM0430r8 p235, the DMA_LISR register
  * documentation, and the rest of chapter 9 on all the ways this
- * interacts with the DMA peripheral'
+ * interacts with the DMA peripheral.
+ *
+ * In particular, p215 says there are 5 flags that can trigger this
+ * IRQ: 5 event flags (DMA half transfer, DMA transfer complete, DMA
+ * transfer error, DMA FIFO error, direct mode error) logically ORed
+ * together in a single interrupt request for each stream
+
  */
 void dma2_stream0_isr(void) {
   if((DMA2_LISR & DMA_LISR_TCIF0) != 0) {
     // Clear this flag so we can continue
     dma_clear_interrupt_flags(DMA2, DMA_STREAM0, DMA_LISR_TCIF0);
   }
+
+  uint8_t *bufpos = dma_buffer.buf;
+  if (dma_get_target(DMA2, DMA_STREAM0)) {
+    bufpos += dma_buffer.buflen/2;
+  }
+
+  led_green_toggle();
+
+  dtmf_process(bufpos, dma_buffer.buflen/2);
 }
 
 /**

@@ -20,6 +20,8 @@
 #include "tamo_state.h"
 #include "sin_gen.h"
 #include "pi_reciter.h"
+#include "dtmf.h"
+
 
 
 // First, a dirty hack to get our version string set up.
@@ -28,6 +30,7 @@
 #ifndef ARGALI_VERSION
 #define ARGALI_VERSION UNKNOWN  //!< Default version if none given (No quotes)
 #endif
+
 
  /**
  * \defgroup 00mainloop Main loop
@@ -38,58 +41,214 @@
  * to the console.
  */
 
-static void console_line_handler(char *line, uint32_t line_len) {
-  line_len = line_len;  // Make the unused parameter warning go away
-  logline(LEVEL_INFO, "Got line: %s", line);
-}
+/**
+ * States for our DTMF modem state machine
+ *
+ * The DTMF state machine controls both the modulation and the
+ * demodulation.  When it "hears" a digit, it stops the DAC, and
+ * prepares to go to the next digit once it's clear.  However, there
+ * are race conditions, where a tone_start callback for the same
+ * symbol can happen after the DAC was stopped.
+ *
+ * We therefore need a buffer state to handle that case.
+ */
+typedef enum tone_modem_state {
+                               MODEM_IDLE = 0, //!< Not currently doing DTMF
+                               MODEM_WAITING_SEND, //!< Triggered for send to start
+                               MODEM_SENDING, //!< Modulating a symbol
+                               MODEM_WAITING_STOP, //!< Tone detected, waiting for complete stop
+                               MODEM_DONE, //!< Modem completed symbol
+                               MODEM_RESTART, //!< Modem needs to restart
+} tone_modem_state_t;
 
-static uint8_t dac_buf[256]; //!< The waveform to emit when bored
+////////////////////////////////////////////////////////////
+// Globals
 
+#define DAC_WAVEFORM_LEN 1024
+static uint8_t dac_buf[DAC_WAVEFORM_LEN]; //!< The waveform to emit when bored
 static float dac_sample_rate; //!< The sampling rate of the DAC
+
+#define ADC_NUM_SAMPLES 400 //!< Number of samples to capture, Double-buffer means this gets halved
+static uint8_t adc_buf[ADC_NUM_SAMPLES];
 static float adc_sample_rate; //!< The sampling rate of the ADC
 
+static uint8_t modem_state;
+
+////////////////////////////////////////////////////////////
+// Misc functions
+
 /**
- * \brief Set up the DAC waveform to emit when bored
+ * Fill a buffer with a DTMF waveform, using the less-pleasant
+ * sin_gen_generate_fill()
  */
-static void dac_waveform_setup(void) {
-#define WAVEFORM_LEN 256
-  int i;
-  uint16_t prescaler = 9;
-  uint32_t period = 2;
-
-  dac_sample_rate = dac_get_sample_rate(prescaler, period);
-
+static void fill_dtmf_waveform_buf(float f0, float f1) {
   sin_gen_result_t res;
   sin_gen_request_t req;
 
-  int f_tone = 20000;
+  uint8_t working_buf[DAC_WAVEFORM_LEN];
 
-  res = sin_gen_populate(&req, dac_buf, WAVEFORM_LEN, f_tone, dac_sample_rate);
+  //  logline(LEVEL_DEBUG, "filling DTMF buffer: %d / %d  (%d Sps)", (int)f0, (int)f1, (int)dac_sample_rate);
+
+  //////////////////////////////
+  // Generate tone f0 at full amplitude in our working buffer
+  res = sin_gen_populate(&req, working_buf, DAC_WAVEFORM_LEN, f0, dac_sample_rate);
   if (SIN_GEN_OKAY != res) {
     logline(LEVEL_ERROR, "Failed to populate sin_gen request, bailing on DAC setup: %s!",
 	    sin_gen_result_name(res));
     return;
   }
-  req.scale = 2;
+  req.scale = 2; // Turn it down a little
 
-  res = sin_gen_generate(&req);
+  res = sin_gen_generate_fill(&req);
   if (SIN_GEN_OKAY != res) {
-    logline(LEVEL_INFO, "DAC sample rate: %ld sps", (int)dac_sample_rate);
     logline(LEVEL_ERROR, "Failed to generate sine tone of %ld Hz, bailing on DAC setup: %s!",
-	    f_tone, sin_gen_result_name(res));
+	    f0, sin_gen_result_name(res));
     return;
   }
 
-  logline(LEVEL_INFO, "DAC sample rate: %ld, expected freq: %ld Hz (%d samples long)",
-	  (int)dac_sample_rate,
-	  (int)(dac_sample_rate/req.result_len),
-	  req.result_len);
-  dac_setup(prescaler, period, dac_buf, req.result_len);
-#undef WAVEFORM_LEN
+
+  //////////////////////////////
+  // Generate tone f1 at full amplitude in our dac buffer
+  res = sin_gen_populate(&req, dac_buf, DAC_WAVEFORM_LEN, f1, dac_sample_rate);
+  if (SIN_GEN_OKAY != res) {
+    logline(LEVEL_ERROR, "Failed to populate sin_gen request, bailing on DAC setup: %s!",
+	    sin_gen_result_name(res));
+    return;
+  }
+  req.scale = 2; // Turn it down a little
+
+  res = sin_gen_generate_fill(&req);
+  if (SIN_GEN_OKAY != res) {
+    logline(LEVEL_ERROR, "Failed to generate sine tone of %ld Hz, bailing on DAC setup: %s!",
+	    f1, sin_gen_result_name(res));
+    return;
+  }
+
+  //////////////////////////////
+  // And combine the two
+  for (int i = 0; i < DAC_WAVEFORM_LEN; i++) {
+    int16_t j = dac_buf[i] + working_buf[i];
+    dac_buf[i] = j/2;
+  }
 }
 
-#define ADC_NUM_SAMPLES 512
-static uint8_t adc_buf[ADC_NUM_SAMPLES];
+/**
+ * \brief Set up the DAC waveform to emit when bored
+ */
+static void dac_waveform_setup(void) {
+  uint16_t prescaler = 24;
+  uint32_t period = 49;
+
+  dac_sample_rate = dac_get_sample_rate(prescaler, period);
+
+  dac_setup(prescaler, period, dac_buf, DAC_WAVEFORM_LEN);
+}
+
+
+static void tone_start_next_digit(void) {
+  float f_row, f_col;
+  uint8_t next_digit;
+  dtmf_status_t dtmf_stat;
+
+  if (modem_state == MODEM_RESTART) {
+    pi_reciter_reset();
+  }
+
+  next_digit = pi_reciter_next_digit();
+
+  dtmf_stat = dtmf_get_tones(next_digit, &f_row, &f_col);
+
+  logline(LEVEL_DEBUG_NOISY, "tone_start_next_digit: %d: Next digit will be: %c: %d/%d",
+          modem_state, next_digit, (int)f_row, (int)f_col);
+  if (DTMF_OKAY != dtmf_stat) {
+    logline(LEVEL_ERROR, "tone_start_next_digit: Couldn't populate tones for symbol '%c' ", next_digit);
+    //!< \todo Decode DTMF errors
+    pi_reciter_reset();
+    next_digit = pi_reciter_next_digit();
+  }
+
+  modem_state = MODEM_SENDING;
+
+  // Just blast over the existing buffer while it's on, the glitches
+  // don't matter to us here.
+  fill_dtmf_waveform_buf(f_row,f_col);
+  dac_start();
+  adc_unpause();
+}
+
+static void tone_stop(void) {
+  modem_state = MODEM_IDLE;
+  dac_stop();
+  adc_pause();
+}
+
+
+////////////////////////////////////////////////////////////
+// Callbacks
+
+/**
+ * Callback for serial console inputs
+ */
+static void console_line_handler(char *line, uint32_t line_len) {
+  line_len = line_len;  // Make the unused parameter warning go away
+  logline(LEVEL_INFO, "Got line: %s", line);
+}
+
+
+/**
+ * Callback for DTMF tone stop
+ */
+static void dtmf_tone_stop_cb(uint8_t sym, float ms) {
+  pi_reciter_rx_state_t rx_state;
+  uint8_t expected = pi_reciter_next_digit();
+
+  //logline(LEVEL_INFO, "\t\tTone stop (%d): %c / %d ms expect %c",
+  //       modem_state, sym, (int)(1000*ms), expected);
+
+  if ((modem_state != MODEM_SENDING) && (modem_state != MODEM_WAITING_STOP)) {
+    return;
+  }
+
+  rx_state = pi_reciter_rx_digit(sym);
+
+  if (PI_RECITER_OKAY != rx_state) {
+    logline(LEVEL_ERROR, "Got incorrect digit or am exhausted: got %c, expected %c",
+            sym, expected);
+
+    modem_state = MODEM_RESTART;
+  } else {
+    logline(LEVEL_INFO, "Pi: %c okay, will advance", sym);
+    modem_state = MODEM_DONE;
+  }
+
+
+}
+
+
+/**
+ * Callback for DTMF tone detection start
+ */
+static void dtmf_tone_start_cb(uint8_t sym, float val) {
+
+
+  //logline(LEVEL_INFO, "\t\tTone start (%d) : %c: %d", modem_state, sym, (int)(val*1000));
+
+  if (modem_state == MODEM_IDLE) return; // Ignore spurious callbacks when idle
+
+  if (modem_state != MODEM_SENDING) return; // short-circuit races
+
+  modem_state = MODEM_WAITING_STOP;
+
+  // Stop sending digits so we can move on
+  //logline(LEVEL_DEBUG, "Turning off tone now");
+  dac_stop();
+}
+
+
+
+////////////////////////////////////////////////////////////
+// Main
+//
 
 /**
  * \brief The main loop.
@@ -100,42 +259,97 @@ int main(void) {
 
   static char console_rx_buffer[1024]; //!< Buffer for the console to use
 
+  float dtmf_threshold = 0.5;
+
+  // Only variables declaration/definitions above this line
+  //////////////////////////////////////////////////
+  // Critical init section /////////////////////////
+  //
+
   system_clock_setup();
 
+  memset(console_rx_buffer, 0, 1024);
   console_setup(&console_line_handler, console_rx_buffer, 1024);
   log_forced("TamoDevBoard startup, version " xstr(ARGALI_VERSION) " Compiled " __TIMESTAMP__);
+
+  //
+  // End critical init section /////////////////////
+  //////////////////////////////////////////////////
+
+  // Less critical setup starts here
+
+  // Misc UI elements
   led_setup();
   button_setup();
+
+  // DAC
   dac_waveform_setup();
 
-  current_time = 0;
-  tamo_state_init(&tamo_state, current_time);
-  pi_reciter_init();
-
-  uint32_t desired_rate = 10000;
-  adc_sample_rate = adc_setup(adc_buf, ADC_NUM_SAMPLES, desired_rate);
+  // ADC
+  adc_sample_rate = adc_setup(adc_buf, ADC_NUM_SAMPLES);
   logline(LEVEL_INFO, "Configured ADC at %d samples per second",
 	  (uint32_t)adc_sample_rate);
-  if (0 == adc_sample_rate) {
-    logline(LEVEL_ERROR, "Could not set up ADC to desired rate of %d Hz!",
-	    (uint32_t)desired_rate);
-  }
 
+  // Time initialization
+  current_time = 0;
+
+  // Set up the Tamo state machine
+  tamo_state_init(&tamo_state, current_time);
+
+  // Get ready to recite digits of pi
+  pi_reciter_init();
+
+  // And then set up DTMF decoding
+  modem_state = MODEM_IDLE;
+  dtmf_init(adc_sample_rate, dtmf_threshold, dtmf_tone_start_cb, dtmf_tone_stop_cb);
+  // Prime DTMF decoding, will start first digit for now
+  //  dtmf_tone_stop_cb('D', 0);
+
+
+  ////////////////////////////////////////////////////////////
+  // Main Loop
+  //
   while (1) {
     // Run this loop at about 10Hz, and poll for inputs.  (Huge antipattern!)
     for (int j = 0; j < 10; j++) {
       bool user_present = button_poll();
+
+      if ((modem_state == MODEM_RESTART) || (modem_state == MODEM_DONE)) {
+
+        if (modem_state == MODEM_RESTART) {
+          logline(LEVEL_DEBUG, "Reseting pi reciter");
+          tone_stop();
+          pi_reciter_reset();
+        }
+
+        logline(LEVEL_DEBUG, "Main loop: Advancing digit");
+        modem_state = MODEM_WAITING_SEND;
+        tone_start_next_digit();
+      }
+
+      if (user_present) {
+      }
+
+
+      //////////////////////////////
+      // Drive TamoDevBoard machine
       if (tamo_state_update(&tamo_state, current_time, user_present)) {
         logline(LEVEL_INFO, "Transition to %s: %d",
 		tamo_emotion_name(tamo_state.current_emotion), user_present);
 
 	switch(tamo_state.current_emotion) {
 	case TAMO_BORED:
-	  uint8_t next_digit = pi_reciter_next_digit();
-	  dac_start();
+          if (modem_state == MODEM_IDLE) {
+            // Start on button press for now
+            modem_state = MODEM_WAITING_SEND;
+            logline(LEVEL_DEBUG, "Main loop: Starting modem");
+            tone_start_next_digit();
+          } else {
+            logline(LEVEL_DEBUG, "Main loop: Modem state: %d", modem_state);
+          }
 	  break;
 	default:
-	  dac_stop();
+          tone_stop();
 	  break;
 	}
       }

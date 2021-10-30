@@ -12,7 +12,7 @@
  */
 
 
-typedef void (*dtmf_down_callback)(uint8_t); //!< callback when a tone is first hit
+typedef void (*dtmf_down_callback)(uint8_t, float); //!< callback when a tone is first hit
 typedef void (*dtmf_up_callback)(uint8_t, float); //!< callback when a tone stops
 
 /**

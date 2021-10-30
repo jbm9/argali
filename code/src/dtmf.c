@@ -158,7 +158,7 @@ static uint8_t decode_symbol(uint8_t row, uint8_t col) {
  * Doing it this way centralizes a lot of logic that is otherwise
  * duplicated all over the place.
  */
-static void dtmf_sym_decoded(uint8_t new_symbol, float dt) {
+static void dtmf_sym_decoded(uint8_t new_symbol, float best_row_mag, float best_col_mag, float dt) {
   // If symbol matches what we have, just increment dt and return
   if (new_symbol == dtmf_state.cur_symbol) {
     dtmf_state.cur_symbol_dt += dt;
@@ -176,7 +176,7 @@ static void dtmf_sym_decoded(uint8_t new_symbol, float dt) {
 
   // And if it's a valid symbol, do a down_cb
   if (DTMF_SYMBOL_NONE != new_symbol) {
-    dtmf_config.down_cb(new_symbol);
+    dtmf_config.down_cb(new_symbol, (best_col_mag < best_row_mag ? best_col_mag : best_row_mag));
   }
   return;
 }
@@ -227,7 +227,7 @@ void dtmf_process(const uint8_t *buf, uint16_t buflen) {
 
   // If buflen == 0 and valid cur_symbol, call up_callback() and reset
   if (buflen == 0) {
-    dtmf_sym_decoded(DTMF_SYMBOL_NONE, 0);
+    dtmf_sym_decoded(DTMF_SYMBOL_NONE, 0, 0, 0);
     return;
   }
 
@@ -293,8 +293,9 @@ void dtmf_process(const uint8_t *buf, uint16_t buflen) {
   // Fix up threshold to use mag-squared and avoid sqrt
   float th = dtmf_config.threshold * dtmf_config.threshold;
 
+  // If neither is good enough, send a NONE (decoded will de-dupe)
   if ((best_row_mag < th) || (best_col_mag < th)) {
-    dtmf_sym_decoded(DTMF_SYMBOL_NONE, dt);
+    dtmf_sym_decoded(DTMF_SYMBOL_NONE, best_row_mag, best_col_mag, dt);
     return;
   }
 
@@ -304,7 +305,7 @@ void dtmf_process(const uint8_t *buf, uint16_t buflen) {
 
   ////////////////////////////////////////////////////////////
   // Do state transitions
-  dtmf_sym_decoded(symbol_found, dt);
+  dtmf_sym_decoded(symbol_found, best_row_mag, best_col_mag, dt);
   return;
 }
 
