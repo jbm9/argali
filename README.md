@@ -34,6 +34,7 @@ this alone can allow a single compelling product to go from zero to a
 million users.  But usually you need a product that can be riffed on,
 and used to serve multiple markets.
 
+
 ## Argali is for products
 
 For any embedded thing that is "project" scale, it's hard to beat
@@ -50,16 +51,27 @@ greenfield work at the moment, so we can make some strong assumptions:
 * C only, no C++ support (yet?)
 * A clean separation between logic code and hardware code
 * Source code will be in `code/src/foo.c`
-* Unit test code will be in `code/src/test_foo
+* Unit test code will be in `code/src/test_foo`
+* Drivers go in `code/src/target/devboard_v2/peripheral.c`
 * There's a unified development environment that all developers will
   build in (Docker image with make and gcc), but developers are free
-  to actually code however they wan
-* Everything runs on a Linux machine (or VM), simplifying scripts
+  to actually code however they want
+* Everything runs in a Linux docker container, simplifying scripts.
+  Currently, argali is only being developed on Linux, so the
+  infrastructure outside of docker is a bit Linux-centric.  PRs to
+  support OS X and Windows as first-class docker hosts would be very
+  welcome.  Until then, this should all run fine in a Linux VM, with
+  the repo living on a shared mountpoint so you can edit in your OS of
+  choice.
 
 ## License
 
 Argali is released under the CC0 Licence v1.0,
 https://creativecommons.org/publicdomain/zero/1.0/
+
+That said, I would love to hear if you're using it, and a gallery of
+applications might help in getting more people to build reproducible
+products in Open Source.
 
 
 ## Features
@@ -92,5 +104,5 @@ containers that can persist across sessions.
 argali uses the "Contributor Covenant" code of conduct (currently
 version 1.3.0).
 
-Please review [CODE_OF_CONDUCT.md] before submitting (computer) code
-to the repository.
+Please review [CODE_OF_CONDUCT.md](Code of Conduct) before submitting
+PRs or diffs to the repository.
