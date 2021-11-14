@@ -123,6 +123,7 @@ static void adc_setup_adc(uint8_t *channels, uint8_t n_channels) {
   adc_power_off(ADC1); // Turn off ADC to configure sampling
 
   adc_set_resolution(ADC1, ADC_RESOLUTION_CR1);
+  adc_set_sample_time_on_all_channels(ADC1, ADC_SMPR_SMP_112CYC);
   adc_set_dma_continue(ADC1);
   adc_set_regular_sequence(ADC1, n_channels, channels);
   adc_enable_dma(ADC1);
@@ -182,7 +183,7 @@ static void adc_setup_dma(uint8_t *buf, const uint32_t buflen) {
  *
  * \return The number of points remaining in the current buffer
  */
-uint32_t adc_pause(void) {
+uint32_t adc_stop(void) {
   uint32_t pts_left;
 
   // Stop the ADC clock before stopping DMA, to avoid an endless loop
@@ -206,9 +207,10 @@ uint32_t adc_pause(void) {
 /**
  * \brief Unpause the ADC
  *
- * This turns the ADC data pipeline back on
+ * This turns the ADC data pipeline back on.  You must have called
+ * adc_setup() prior to this.
  */
-void adc_unpause(void) {
+void adc_start(void) {
   rcc_periph_clock_enable(RCC_ADC1);
   adc_setup_dma(dma_buffer.buf, dma_buffer.buflen);
   adc_start_conversion_regular(ADC1);
@@ -222,21 +224,24 @@ void adc_unpause(void) {
  * may have to adjust the result.  You will therefore get back the
  * actual sampling rate.
  *
+ *
+ * \param prescaler The prescaler used for the timer clocking the ADC, see below
+ * \param period The semi-period between timer clocks, see below
  * \param buff Buffer to write data into
  * \param buflen Number of entries in this buffer
  *
+ * See timer_setup_adcdac() for more info on the prescaler and period
+ * variables, as they are just passed through to it.
+ *
  * \returns The actual sampling rate that was obtained
  */
-float adc_setup(uint8_t *buff, const uint32_t buflen) {
-  uint16_t prescaler = 104;
-  uint32_t period = 49;
-
+float adc_setup(uint16_t prescaler, uint32_t period, uint8_t *buff, uint32_t buflen) {
   uint8_t channels[1] = {0};
   const uint8_t n_channels = 1;
 
   adc_setup_clocks();
-
   adc_setup_gpio();
+
   timer_setup_adcdac(TIM3, prescaler, period);
 
   adc_setup_adc(channels, n_channels);

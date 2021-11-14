@@ -11,6 +11,16 @@
  * \{
  */
 
+//////////////////////////////////////////////////////////////////////
+// Debug Macros
+
+
+//////////////////////////////////////////////////////////////////////
+// State variables
+
+//////////////////////////////////////////////////////////////////////
+// Implementation code
+
 
 /**
  * \brief Set up the GPIOs for the DAC subsystem
@@ -62,6 +72,7 @@ static void dac_dma_setup(const uint8_t *waveform, uint16_t npoints)
   dma_setup(&settings);
 }
 
+
 /**
  * \brief Set up a DAC channel for continuous output
  *
@@ -107,7 +118,7 @@ static void dac_dma_setup(const uint8_t *waveform, uint16_t npoints)
  *
  * NB: while it is slightly unclear in the reference manual, we have
  * confirmed that both prescaler and period use the `x+1` form by
- * setting them to very low values and examining the resultant
+< * setting them to very low values and examining the resultant
  * waveforms.
  *
  */
@@ -165,8 +176,13 @@ float dac_get_sample_rate(uint16_t prescaler, uint32_t period) {
   return (ck_in/2)/(prescaler+1)/(period+1);
 }
 
+
+
+//////////////////////////////////////////////////////////////////////
+// ISRs
+
 /**
- * \brief DMA Callback ISR
+ * \brief DMA Callback ISR for DAC (currently empty)
  */
 void dma1_stream5_isr(void)
 {

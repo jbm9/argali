@@ -173,13 +173,13 @@ static void tone_start_next_digit(void) {
   // don't matter to us here.
   fill_dtmf_waveform_buf(f_row,f_col);
   dac_start();
-  adc_unpause();
+  adc_start();
 }
 
 static void tone_stop(void) {
   modem_state = MODEM_IDLE;
   dac_stop();
-  adc_pause();
+  adc_stop();
 }
 
 
@@ -212,8 +212,8 @@ static void dtmf_tone_stop_cb(uint8_t sym, float ms) {
   rx_state = pi_reciter_rx_digit(sym);
 
   if (PI_RECITER_OKAY != rx_state) {
-    logline(LEVEL_ERROR, "Got incorrect digit or am exhausted: got %c, expected %c",
-            sym, expected);
+    logline(LEVEL_ERROR, "Got incorrect digit or am exhausted: got %c, expected %c, ms=%d",
+            sym, expected, ms);
 
     modem_state = MODEM_RESTART;
   } else {
@@ -229,9 +229,8 @@ static void dtmf_tone_stop_cb(uint8_t sym, float ms) {
  * Callback for DTMF tone detection start
  */
 static void dtmf_tone_start_cb(uint8_t sym, float val) {
-
-
-  //logline(LEVEL_INFO, "\t\tTone start (%d) : %c: %d", modem_state, sym, (int)(val*1000));
+  if (0) // Have a reference to sym and val to make unused-vars happy
+    logline(LEVEL_INFO, "\t\tTone start (%d) : %c: %d", modem_state, sym, (int)(val*1000));
 
   if (modem_state == MODEM_IDLE) return; // Ignore spurious callbacks when idle
 
@@ -286,7 +285,7 @@ int main(void) {
   dac_waveform_setup();
 
   // ADC
-  adc_sample_rate = adc_setup(adc_buf, ADC_NUM_SAMPLES);
+  adc_sample_rate = adc_setup(104, 49, adc_buf, ADC_NUM_SAMPLES);
   logline(LEVEL_INFO, "Configured ADC at %d samples per second",
 	  (uint32_t)adc_sample_rate);
 

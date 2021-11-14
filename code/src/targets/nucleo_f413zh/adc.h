@@ -52,9 +52,9 @@ typedef struct adc_freq_config {
   uint8_t sample_time; //!< The sample time to use, one of ADC_SMPR_SMP_3CYC etc
 } adc_freq_config_t;
 
-float adc_setup(uint8_t *, const uint32_t);
-uint32_t adc_pause(void);
-void adc_unpause(void);
+float adc_setup(uint16_t, uint32_t, uint8_t *,uint32_t);
+uint32_t adc_stop(void);
+void adc_start(void);
 
 float adc_get_sample_rate(uint16_t, uint32_t);
 
