@@ -1,3 +1,4 @@
+
 #pragma once
 
 /**
@@ -25,5 +26,8 @@
 
 void dac_setup(uint16_t, uint32_t, const uint8_t*, uint16_t);
 float dac_get_sample_rate(uint16_t, uint32_t);
+
+void dac_start(void);
+void dac_stop(void);
 
 /** \} */

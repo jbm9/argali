@@ -1,75 +1,130 @@
-/*
-  RM0410 pp438-486
+/**
+ * \file adc.c
+ * \brief Nucleo F767ZI ADC interface implementation
+ */
 
-  For 12b resolution, we need 15 ADCCLK cycles to convert For 8b,this
-  is only 11.
 
-  Big caveat about overflow and DMA interactions on p453 (15.8.1 Using
-  the DMA)
+/**
+ * \defgroup nucleo_f767zi_adc ADC driver (Nucleo F767ZI)
+ *
+ * \addtogroup nucleo_f767zi_adc
+ * \{
+ * \ingroup nucleo_f767zi
+ *
+ * This is a DMA-driven ADC input driver.
+ *
+ * Resources needed for the F767ZI's DMA ADC:
+ *
+ * * DMA channel
+ * * ADC channel(s)
+ * * Clock channels
+ * * GPIO AF assignment
+ *
+ * Relevant documentation: RM0410 Rev 4 p447: 15.3.9 Scan mode
+ * explains how continuous multi-channel scans work, and how they feed
+ * into DMA.  This seems to be the way to get DMA working for ADC
+ * inputs.
+ *
+ * * Set channels in the ADC_SQRx registers (including count in SQR1)
+ * * Set the SCAN bit in ADC_CR1
+ * * Data is stashed in ADC_DR
+ * * If DMA is set, this gets moved to memory after the conversion
+ *
+ * p449/15.4 says data alignment is in ADC_CR2
+ *
+ * p450 15.5 is about setting channel sampling times.
+ *
+ * T_conv = Sampling time + 12 cycles
+ *
+ * The minimum sampling time is dependent on the resolution.  For N
+ * bits, the minimum sampling time is N+12 clocks.
+ *
+ * These cycles are of ADCCLK, which is system clock after prescaler
+ * specified in RM0410 p444 13.3.3 "ADC Clock", but better specified
+ * in the register descriptions.  pp480-2 has ADC_CCR, where ADCPRE
+ * lives.
+ *
+ * Note also that there are TWO clocks for ADC: one for conversion,
+ * and the other for register access.  The ADCCLK is derived from the
+ * clock on APB2 by prescaling, but the actual register accesses
+ * happen at the raw APB2 clock speed.
+ *
+ * There are some minimal limits to the ADC clock frequency, described
+ * in the DS11532, p.162 We can't clock it faster than 36MHz, though
+ * 18MHz is safer if we want to run supply voltages under 2.4V.
+ *
+ * ADC DMA setup is described in 15.8.1.  If you're after continuous
+ * input (say you have a mic array), you'll want double-buffer
+ * circular mode, which is what we use here.
+ *
+ * If, despite this, you get a DMA overrun (ADC_SR has OVR set), you
+ * need to follow a procedure to reset state.  Your data is good, but
+ * the process to reset is to clear the OVR flag and DMAEN in the DMA
+ * stream, then re-init both DMA and ADC with all the conversion
+ * channel info and data buffers.  This will re-sync your data stream
+ * with the input conversions.
+ *
+ * Pin assignments are in DS11532 r7 pp66-84, with the a AF table on
+ * pp89-102.
+ *
+ * PA3 is ADC1_IN3, which is also CN9.A0 on the nucleo board.  This
+ * lets us not open another GPIO port just yet.  I worry about
+ * crosstalk from our boredom tone a bit, but we'll see how it goes.
+ */
 
-  ADC_CR2 DDS bit is key to continuing the samples.
-
-  Looks like we want DMA mode 3, which will give two simultaneous 8b
-  values per DMA xfer.
-
-  If we go to triple DMA, probably want to switch back to Mode 1, as
-  the juggling of values in Modes 2 and 3 are crazypants.
-
-  Probably want to add an OVRIE handler (p469) at some point, to keep
-  track of any problems with ADC in the device.
-
-  https://embedds.com/multichannel-adc-using-dma-on-stm32/ -- STM32F1, unfortunately (it has different ADC periphs)
-
-  Using channel 0 of ADC1, which is PA0.  Will want to add channel 1
-  of ADC2 for current monitoring in the final application, which is at
-  PA1.
-
-  DMA Stream 2 channel 0 stream 0 is ADC1 (RM0410r4 p249 Table 28)
-
-  Ah, found a good example to work off of:
-  https://github.com/JonasNorling/guitarboard/blob/b3e7b9216327e9e91580e97f254aaab5a42a5b1c/fw/src/target/platform-stm32.c
-
-  https://github.com/ksarkies/ARM-Ports/blob/4f1584b8cfe47ac615ce31fd8645255f27151aca/test-libopencm3-stm32f4/adc-dma-stm32f4discovery.c
-*/
-
-#include <libopencm3/stm32/rcc.h>
-#include <libopencm3/stm32/gpio.h>
-#include <libopencm3/stm32/timer.h>
-#include <libopencm3/cm3/nvic.h>
-#include <libopencm3/stm32/adc.h>
-#include <libopencm3/stm32/dma.h>
 #include "adc.h"
+#include "dma.h"
+#include "leds.h"
+#include "timer.h"
+
+#include "logging.h"
+#include "dtmf.h"
+
+//////////////////////////////////////////////////////////////////////
+// Debug Macros
 
 
-volatile uint32_t adc_isrs = 0;
+//////////////////////////////////////////////////////////////////////
+// State variables
 
+static adc_dma_buffer_t dma_buffer; //!< The buffer that was given to us
+
+//////////////////////////////////////////////////////////////////////
+// Implementation code
+
+/**
+ * \brief Starts up the clocks needed for ADC
+ */
 static void adc_setup_clocks(void) {
   rcc_periph_clock_enable(RCC_GPIOA);
-
   rcc_periph_clock_enable(RCC_ADC1);
-
-  rcc_periph_clock_enable(RCC_DMA2); // DMA2 stream 0
-  rcc_peripheral_enable_clock(&RCC_AHB1ENR, RCC_AHB1ENR_DMA2EN);
+  rcc_periph_clock_enable(RCC_DMA2);
 }
 
+/**
+ * \brief Configure the GPIOs needed for this
+ *
+ * This sets up our GPIOs for analog input.
+ */
 static void adc_setup_gpio(void) {
-  gpio_mode_setup(GPIOA, GPIO_MODE_ANALOG, GPIO_PUPD_NONE, GPIO0); // PA0 -- CN10.29
-  gpio_mode_setup(GPIOA, GPIO_MODE_ANALOG, GPIO_PUPD_NONE, GPIO1);  // Going to want this soon
+  // PA0 -- CN10.29
+  gpio_mode_setup(GPIOA, GPIO_MODE_ANALOG, GPIO_PUPD_NONE, GPIO0);
 
+  // PA2 -- CN10.11
+  gpio_mode_setup(GPIOA, GPIO_MODE_ANALOG, GPIO_PUPD_NONE, GPIO2);
 }
 
-static void adc_setup_adc(void) {
-  uint8_t channels[1] = {0};
-  const uint8_t n_channels = 1;
 
+/**
+ * \brief Configures the ADC peripheral for capture
+ * */
+static void adc_setup_adc(uint8_t *channels, uint8_t n_channels) {
   nvic_enable_irq(NVIC_ADC_IRQ);
 
   adc_power_off(ADC1); // Turn off ADC to configure sampling
-  adc_enable_scan_mode(ADC1);
-  adc_set_sample_time_on_all_channels(ADC1, ADC_SMPR_SMP_112CYC);
-  adc_set_clk_prescale(ADC_CCR_ADCPRE_BY8);
-  adc_set_continuous_conversion_mode(ADC1);
+
   adc_set_resolution(ADC1, ADC_CR1_RES_8BIT);
+  adc_set_sample_time_on_all_channels(ADC1, ADC_SMPR_SMP_112CYC);
   adc_set_dma_continue(ADC1);
   adc_set_regular_sequence(ADC1, n_channels, channels);
   adc_enable_dma(ADC1);
@@ -78,86 +133,190 @@ static void adc_setup_adc(void) {
   adc_power_on(ADC1);  // Re-power ADC peripheral
 }
 
-static void adc_setup_dma(uint8_t *buff, const uint32_t buflen) {
-  // Set up DMA, following RM0410r4 p263, 8.3.18 "Stream configuration procedure"
-  // 1. Set to enabled: NB, not checking for EN to be 0 before!
-  dma_stream_reset(DMA2, DMA_STREAM0);
 
-  // 2. Set the port register address
-  dma_set_peripheral_address(DMA2, DMA_STREAM0, (uint32_t) &ADC_DR(ADC1));
+/**
+ * \brief Brings up the DMA with a configuration for our ADC.
+ *
+ * Note that this treats your buffer as a contiguous unit for two
+ * half-length buffers.
+ *
+ * This does a full reset of the peripheral, then follows the flow
+ * found in RM0410r4 p263, 8.3.18 "Stream configuration procedure"
+ */
+static void adc_setup_dma(uint8_t *buf, const uint32_t buflen) {
+  // Before we begin, let's save this state for restarts
+  dma_buffer.buf = buf;
+  dma_buffer.buflen = buflen;
 
-  // 3. Set the memory address in DMA_SxMA0R
-  dma_set_memory_address(DMA2, DMA_STREAM0, (uint32_t) buff);
+  dma_settings_t settings = {
+                             .dma = DMA2,
+                             .stream = DMA_STREAM0,
+                             .channel = DMA_SxCR_CHSEL_0,
+                             .priority = DMA_SxCR_PL_LOW,
 
-  // 4. Configure the data items to transfer
-  dma_set_number_of_data(DMA2, DMA_STREAM0, buflen);
+                             .direction = DMA_SxCR_DIR_PERIPHERAL_TO_MEM,
+                             .paddr = (uint32_t)&ADC_DR(ADC1),
+                             .peripheral_size = DMA_SxCR_PSIZE_8BIT,
+                             .buf = (uint32_t) buf,
+                             .buflen = buflen,
+                             .mem_size = DMA_SxCR_MSIZE_8BIT,
 
-  // 5. Select the channel
-  dma_channel_select(DMA2, DMA_STREAM0, DMA_SxCR_CHSEL_0);
+                             .circular_mode = 1,
+                             .double_buffer = 1,
 
-  // 6. If the peripheral is a flow controller, set that up (this isn't)
+                             .transfer_complete_interrupt = 1,
+                             .enable_irq = 1,
+                             .irqn = NVIC_DMA2_STREAM0_IRQ,
+  };
 
-  // 7. Configure priority
-  dma_set_priority(DMA2, DMA_STREAM0, DMA_SxCR_PL_LOW);
-
-  // 8. Configure FIFO (not using one)
-  dma_enable_direct_mode(DMA2, DMA_STREAM0);  // Don't use the FIFO
-
-  // 9. Configure the transfer direction etc (see document)
-  dma_set_transfer_mode(DMA2, DMA_STREAM0, DMA_SxCR_DIR_PERIPHERAL_TO_MEM);
-
-  dma_enable_memory_increment_mode(DMA2, DMA_STREAM0);
-  dma_set_peripheral_size(DMA2, DMA_STREAM0, DMA_SxCR_PSIZE_8BIT);
-  dma_set_memory_size(DMA2, DMA_STREAM0, DMA_SxCR_MSIZE_8BIT);
-
-  dma_enable_circular_mode(DMA2, DMA_STREAM0);
-  dma_enable_transfer_complete_interrupt(DMA2, DMA_STREAM0);
-  //dma_enable_half_transfer_interrupt(DMA2, DMA_STREAM0);
-  nvic_enable_irq(NVIC_DMA2_STREAM0_IRQ);
-  // 10. Activate the stream
-  dma_enable_stream(DMA2, DMA_STREAM0);
+  dma_setup(&settings);
+  return;
 }
 
-void adc_pause(void) {
-  //dma_disable_stream(DMA2, DMA_STREAM0);
-  //  adc_disable_dma(ADC1);
+
+/**
+ * \brief Pause the ADC
+ *
+ * This pauses the ADC, right now.  It does not necessarily align the
+ * data, which is unfortunate.
+ *
+ * \todo This permahangs the ADC after two calls?
+ *
+ * \return The number of points remaining in the current buffer
+ */
+uint32_t adc_stop(void) {
+  uint32_t pts_left;
+
+  // Stop the ADC clock before stopping DMA, to avoid an endless loop
+  // of overflows.
   rcc_periph_clock_disable(RCC_ADC1);
+
+  // Interrupting DMA means we need a full rebuild afterwards.  See
+  // RM0410r4 p261 8.3.15 DMA transfer suspension for details.
+
+  // Note that this triggers an overflow ADC ISR, and will keep doing
+  // so until the ADC clock is turned off!
+  dma_disable_stream(DMA2, DMA_STREAM0);
+
+  // After we stop the stream, find out where the data buffer wraps,
+  // so we can report it back.
+  pts_left = DMA_SNDTR(DMA2, DMA_STREAM0);
+
+  return pts_left;
 }
 
-void adc_unpause(void) {
-  //  dma_enable_stream(DMA2, DMA_STREAM0);
-  //  adc_enable_dma();
+/**
+ * \brief Unpause the ADC
+ *
+ * This turns the ADC data pipeline back on.  You must have called
+ * adc_setup() prior to this.
+ */
+void adc_start(void) {
   rcc_periph_clock_enable(RCC_ADC1);
+  adc_setup_dma(dma_buffer.buf, dma_buffer.buflen);
+  adc_start_conversion_regular(ADC1);
 }
+
 
 /**
  * \brief Sets up ADC1 on DMA2 Stream 0 for input
  *
+ * Note that desired_rate is a requested sampling rate, and the driver
+ * may have to adjust the result.  You will therefore get back the
+ * actual sampling rate.
+ *
+ *
+ * \param prescaler The prescaler used for the timer clocking the ADC, see below
+ * \param period The semi-period between timer clocks, see below
  * \param buff Buffer to write data into
  * \param buflen Number of entries in this buffer
+ *
+ * See timer_setup_adcdac() for more info on the prescaler and period
+ * variables, as they are just passed through to it.
+ *
+ * \returns The actual sampling rate that was obtained
  */
-void adc_setup(uint8_t *buff, const uint32_t buflen) {
+float adc_setup(uint16_t prescaler, uint32_t period, uint8_t *buff, uint32_t buflen) {
+  uint8_t channels[1] = {0};
+  const uint8_t n_channels = 1;
+
   adc_setup_clocks();
   adc_setup_gpio();
 
-  adc_setup_adc();
+  timer_setup_adcdac(TIM4, prescaler, period);
+
+  adc_setup_adc(channels, n_channels);
+
+  adc_enable_external_trigger_regular(ADC1,
+                                      ADC_CR2_EXTSEL_TIM4_TRGO,
+                                      ADC_CR2_EXTEN_RISING_EDGE);
 
   adc_setup_dma(buff, buflen);
 
   // And now we can kick off the ADC conversion
   adc_start_conversion_regular(ADC1);
+
+  //  return sample_rate;
+
+  return adc_get_sample_rate(prescaler, period);
 }
 
-void dma2_stream0_isr(void) {
-  adc_isrs++;
 
+float adc_get_sample_rate(uint16_t prescaler, uint32_t period) {
+  uint32_t ck_in = rcc_get_timer_clk_freq(TIM4);
+  return (ck_in/2)/(prescaler+1)/(period+1);
+}
+
+
+//////////////////////////////////////////////////////////////////////
+// ISRs
+
+/**
+ * \brief DMA2 Stream0 ISR
+ *
+ * This is currently only used to clear the TCIF flag when transfers
+ * are complete.  See RM0410r4 p266, the DMA_LISR register
+ * documentation, and the rest of chapter 7 on all the ways this
+ * interacts with the DMA peripheral.
+ *
+ * In particular, p265 (8.4 "DMA Interrupts") says there are 5 flags
+ * that can trigger this IRQ: 5 event flags (DMA half transfer, DMA
+ * transfer complete, DMA transfer error, DMA FIFO error, direct mode
+ * error) logically ORed together in a single interrupt request for
+ * each stream
+
+ */
+void dma2_stream0_isr(void) {
   if((DMA2_LISR & DMA_LISR_TCIF0) != 0) {
     // Clear this flag so we can continue
     dma_clear_interrupt_flags(DMA2, DMA_STREAM0, DMA_LISR_TCIF0);
+
+    uint8_t *bufpos = dma_buffer.buf;
+    if (dma_get_target(DMA2, DMA_STREAM0)) {
+      bufpos += dma_buffer.buflen/2;
+    }
+
+    dtmf_process(bufpos, dma_buffer.buflen/2);
   }
 }
 
-
+/**
+ * \brief ADC ISR
+ *
+ * This is used to clear the overrun flag if it's hit.  It will also
+ * be called in other situations (RM0410r4 p467, 15.12 "ADC
+ * Interrupts"), but all we care about is recovering from overrun
+ * situations.
+ *
+ * In our case, this happens every time we turn off DMA for the ADC
+ * input.  That generates an interrupt, and we need to clear the
+ * overrun flag before it's possible to use the ADC with DMA again
+ * (p453, 15.8.1 "Using the DMA").
+ *
+ * p261, 8.3.15 "DMA transfer suspension" also describes how to
+ * recover from this state, which boils down to "reinitialize the DMA
+ * from scratch."
+ */
 void adc_isr(void) {
   if (adc_get_overrun_flag(ADC1)) {
     adc_clear_overrun_flag(ADC1);
