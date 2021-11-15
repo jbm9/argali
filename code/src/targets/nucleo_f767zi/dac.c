@@ -6,6 +6,9 @@
 #include "dac.h"
 #include "dma.h"
 #include "timer.h"
+
+#include "logging.h"
+
 /**
  * \defgroup nucleo_f767zi_dac DAC Driver (Nucleo F767ZI)
  * \{
@@ -17,6 +20,11 @@
 
 //////////////////////////////////////////////////////////////////////
 // State variables
+
+static uint16_t last_prescaler;
+static uint32_t last_period;
+static const uint8_t *last_waveform;
+static uint16_t last_npoints;
 
 //////////////////////////////////////////////////////////////////////
 // Implementation code
@@ -121,8 +129,18 @@ static void dac_dma_setup(const uint8_t *waveform, uint16_t npoints)
  * setting them to very low values and examining the resultant
  * waveforms.
  *
+ * There is a relevant erratum in the F767 here: 2.6.1 in ES0334 shows
+ * that stopped DMA can lurk in the system and pop out at the next
+ * re-enable, before the new wavetable, and needs to be worked around.
+ *
  */
 void dac_setup(uint16_t prescaler, uint32_t period, const uint8_t *waveform, uint16_t npoints) {
+  // Stash these in case we need to do the erratum workaround
+  last_prescaler = prescaler;
+  last_period = period;
+  last_waveform = waveform;
+  last_npoints = npoints;
+
   gpio_setup();
   timer_setup_adcdac(TIM2, prescaler, period);
 
@@ -147,6 +165,29 @@ void dac_setup(uint16_t prescaler, uint32_t period, const uint8_t *waveform, uin
  * the DAC, though.  You will need to do dac_setup() first.
  */
 void dac_start(void) {
+  // We may need to Work around 2.6.2 "DMA request not automatically
+  // cleared by clearing DMAEN" from ES0334r7.  It doesn't seem like
+  // we are seeing this in practice, though, so we will only log it
+  // for now.
+
+  // 1. Check if DMAUDR bit is set in DAC_CR.
+  if (DAC_SR(DAC1) & DAC_SR_DMAUDR1) {
+    logline(LEVEL_ERROR, "DMAUDR bit set at dac_start, may get noise out before tone. SR=%08x", DAC_SR(DAC1));
+    logline(LEVEL_DEBUG_NOISY, "DMA1 LISR=%08x HISR=%08x", DMA_LISR(DMA1), DMA_HISR(DMA1));
+
+#ifdef F767_ATTEMPT_DAC_DMA_WORKAROUND_2_6_2
+    // 2. Clear the DAC channel DMAEN bit.
+    dac_disable(DAC1, DAC_CHANNEL1);
+    // 3. Disable the DAC clock.
+    rcc_periph_clock_disable(RCC_DAC);
+    // 4. Reconfigure the DAC, DMA and the triggers.
+    dac_setup(last_prescaler, last_period, last_waveform, last_npoints);
+
+    // 5. Restart the application.
+    // fallthrough to the rest of this routine
+#endif
+  }
+  dac_dma_enable(DAC1, DAC_CHANNEL1);
   dma_enable_stream(DMA1, DMA_STREAM5);
   dac_enable(DAC1, DAC_CHANNEL1);
 }
@@ -157,6 +198,7 @@ void dac_start(void) {
  * This stops the DAC output.
  */
 void dac_stop(void) {
+  dac_dma_disable(DAC1, DAC_CHANNEL1);
   dac_disable(DAC1, DAC_CHANNEL1);
   dma_disable_stream(DMA1, DMA_STREAM5);
 }
