@@ -29,6 +29,10 @@ typedef struct adc_dma_buffer {
   uint16_t buflen; //!< The length of the buffer
 } adc_dma_buffer_t;
 
+
+#define ADC_PRESCALER_8KHZ 134 //!< The prescaler needed to get 8kHz
+#define ADC_PERIOD_8KHZ 49 //!< The period needed to get 8kHz
+
 float adc_setup(uint16_t, uint32_t, uint8_t *,uint32_t);
 uint32_t adc_stop(void);
 void adc_start(void);

@@ -63,6 +63,12 @@ float adc_get_sample_rate(uint16_t, uint32_t);
 void adc_apply_freq_config(adc_freq_config_t *);
 #define ADC_RESOLUTION_NBITS 8 //!< How many bits of resolution we're using
 #define ADC_RESOLUTION_CR1 ADC_CR1_RES_8BIT //!< What the STM32 wants to see for our resolution
+
+
+#define ADC_PRESCALER_8KHZ 104 //!< The prescaler needed to get 8kHz
+#define ADC_PERIOD_8KHZ 49 //!< The period needed to get 8kHz
+
+
 #endif
 
 /** \} */

@@ -142,6 +142,7 @@ static void dac_waveform_setup(void) {
   dac_sample_rate = dac_get_sample_rate(prescaler, period);
 
   dac_setup(prescaler, period, dac_buf, DAC_WAVEFORM_LEN);
+  logline(LEVEL_INFO, "DAC sampling rate: %ld", (int)dac_sample_rate);
 }
 
 
@@ -213,7 +214,7 @@ static void dtmf_tone_stop_cb(uint8_t sym, float ms) {
 
   if (PI_RECITER_OKAY != rx_state) {
     logline(LEVEL_ERROR, "Got incorrect digit or am exhausted: got %c, expected %c, ms=%d",
-            sym, expected, ms);
+            sym, expected, (int)(ms*1000));
 
     modem_state = MODEM_RESTART;
   } else {
@@ -285,7 +286,8 @@ int main(void) {
   dac_waveform_setup();
 
   // ADC
-  adc_sample_rate = adc_setup(104, 49, adc_buf, ADC_NUM_SAMPLES);
+  adc_sample_rate = adc_setup(ADC_PRESCALER_8KHZ, ADC_PERIOD_8KHZ,
+                              adc_buf, ADC_NUM_SAMPLES);
   logline(LEVEL_INFO, "Configured ADC at %d samples per second",
 	  (uint32_t)adc_sample_rate);
 
