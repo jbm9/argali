@@ -305,7 +305,7 @@ void test_generate_downsample2(void) {
   // 0xFF is unattainable by our sine generator, so makes a good
   // sentinel for testing.
   memset(expected_wav, 0xff, 1024);
-  memset(test_req->buf, 0xff, 1024);
+  memset(dummy_buf, 0xff, dummy_buflen);
 
   for (int i = 0; i < 512; i++) {
     int quadrant = i / 128;
