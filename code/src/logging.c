@@ -1,4 +1,6 @@
 #include "logging.h"
+#include "packet.h"
+
 #include <stdio.h>
 
 /**
@@ -46,11 +48,28 @@ const char* log_level_to_str(log_level_t loglevel) {
  */
 void logline(log_level_t loglevel, const char *fmt, ...) {
   char buf[1024];
+  uint16_t buflen;
+
   va_list argp;
   va_start(argp, fmt);
-  vsprintf(buf, fmt, argp);
+  buflen = vsprintf(buf, fmt, argp);
   va_end(argp);
-  printf("[%s] %s\n", log_level_to_str(loglevel), buf);
+
+  char pktbuf[1024];
+  uint16_t pktlen;
+  pktlen = packet_frame(pktbuf, buf, buflen, 'L', '!');
+
+  int i;
+
+  for (i = 0; i < 4; i++) {
+    console_send_blocking('~');
+  }
+
+  for (i = 0; i < pktlen; i++) {
+    console_send_blocking(pktbuf[i]);
+  }
+
+  //printf("[%s] %s\n", log_level_to_str(loglevel), buf);
 }
 
 void log_forced(const char *fmt, ...) {
