@@ -11,7 +11,7 @@
 
 #define CPU_CLOCK_SPEED 216000000 //!< Main clock speed
 
-#define CLOCKS_PER_MS CPU_CLOCK_SPEED / 1000 //!< Approximate number of NOP/inc/cmp loop cycles to run to delay a millisecond
+#define AHB_TICKS_PER_DELAY_LOOP 2 //!< How many AHB clock ticks our _delay_ms() takes for a single loop
 
 
 void system_clock_setup(void);

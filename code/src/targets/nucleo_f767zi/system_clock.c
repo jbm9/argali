@@ -37,13 +37,13 @@ void system_clock_setup(void) {
  * \param ms The approximate time to sleep for (in milliseconds)
  *
  * Note that this is wildly inadequate for anything but silly sample
- * code.  It should be using a known-good configuration of the system
- * clock, and, if used in anything like production code, should
- * probably have a verification and validation plan.
+ * code.  If used in anything like production code, should probably
+ * have a verification and validation plan.
  */
 void _delay_ms(uint16_t ms) {
-  //! \todo actually use the clock speed for delays
-  for (uint32_t i = 0; i < ms * CLOCKS_PER_MS; i++)
+  const uint32_t loops_per_ms = rcc_ahb_frequency / 1000 / AHB_TICKS_PER_DELAY_LOOP;
+
+  for (uint32_t i = 0; i < ms * loops_per_ms; i += 1)
     __asm__("NOP");
 }
 
