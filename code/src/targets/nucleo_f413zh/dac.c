@@ -118,7 +118,7 @@ static void dac_dma_setup(const uint8_t *waveform, uint16_t npoints)
  *
  * NB: while it is slightly unclear in the reference manual, we have
  * confirmed that both prescaler and period use the `x+1` form by
-< * setting them to very low values and examining the resultant
+ * setting them to very low values and examining the resultant
  * waveforms.
  *
  */
