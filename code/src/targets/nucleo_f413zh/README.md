@@ -178,6 +178,8 @@ Timer 3 is used for the ADC peripheral.
 
 ### DMA 1
 
+DMA 1 Stream 1 is used for USART RX.
+
 DMA 1 Stream 5 is used by DAC.
 
 ### DMA 2
@@ -210,3 +212,5 @@ The DAC is clocked with Timer 2
 ## USART peripherals
 
 USART3 is used by the console.
+
+We use DMA to pull in data for RX, but TX is still blocking.

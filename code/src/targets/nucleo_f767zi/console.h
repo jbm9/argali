@@ -49,5 +49,5 @@ typedef struct {
 
 void console_setup(console_cb, char *, uint32_t);
 void console_send_blocking(const char);
-
+void console_trigger(void);
 /** \} */ // End doxygen group

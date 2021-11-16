@@ -180,7 +180,11 @@ Timer 4 is used for the ADC peripheral.
 
 ## DMA peripherals
 
+
+
 ### DMA 1
+
+DMA 1 Stream 1 is used by the USART RX path.
 
 DMA 1 Stream 5 is used by DAC.
 
@@ -226,3 +230,5 @@ having a lot harder time than the F413 version.  This may be why.
 ## USART peripherals
 
 USART3 is used by the console.
+
+The receive side uses DMA, while transmit is still blocking.
