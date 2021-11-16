@@ -28,9 +28,7 @@
  * \brief Set up the LEDs for use
  */
 void led_setup(void) {
-  printf("s\n");
 #ifndef TEST_UNITY
-  printf("setup\n");
   // Turn on the clock we need
   rcc_periph_clock_enable(LED_CLOCK);
 
