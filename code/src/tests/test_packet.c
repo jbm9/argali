@@ -1,21 +1,74 @@
 #include <stdint.h>
+#include <ctype.h>
 
 #include "unity.h"
 
 #include "packet.h"
 
 //////////////////////////////////////////////////////////////////////
-// Unity requires a setUp and tearDown function.
+// Globals to pass state around
+
+uint8_t G_buf[1024];
+
+uint8_t *G_rx_buf;
+uint16_t G_rx_buflen;
+uint8_t G_rx_addr;
+uint8_t G_rx_control;
+uint8_t G_rx_fcs_match;
+
+//////////////////////////////////////////////////////////////////////
+// Utility functions
 
 /**
- * Empty setUp() to make unity happy
+ * Dump a buffer to stdout, because debugging escapes is hard.
  */
-void setUp(void) { }
+static void dump_buf(char *nom, uint8_t *buf, uint16_t buflen) {
+  for (int k = 0; k < buflen; k++) {
+    if (0 == (k%16)) printf("\n\t%s: ", nom);
+    printf("%02x(%c) ", buf[k], (isalnum(buf[k]) ? buf[k] : '_'));
+  }
+  printf("\n");
+}
+
+
+//////////////////////////////////////////////////////////////////////
+// Callbacks
+
+static void parse_cb(uint8_t *buf, uint16_t buflen, uint8_t addr, uint8_t control, uint8_t fcs_match) {
+  printf("\nGot packet: %d! addr=%02x control=%02x fcs_match=%d buf=%p\n",
+         buflen, addr, control, fcs_match, buf);
+  G_rx_buf = buf;
+  G_rx_buflen = buflen;
+  G_rx_addr = addr;
+  G_rx_control = control;
+  G_rx_fcs_match = fcs_match;
+
+  //  dump_buf("G_rx_buf", G_rx_buf, buflen);
+  printf("\n");
+}
+
+
+
+//////////////////////////////////////////////////////////////////////
+// Unity requires a setUp and tearDown function.
+
+void setUp(void) {
+  G_rx_buf = NULL;
+  G_rx_buflen = 0xbeef;
+  G_rx_addr = '*';
+  G_rx_control = '$';
+  G_rx_fcs_match = 0;
+
+  memset(G_buf, '#', 1024);
+  parser_setup(parse_cb, G_buf, 1024);
+}
 
 /**
  * There is nothing to tear down in this set of tests.
  */
-void tearDown(void) {}
+void tearDown(void) {
+}
+
 
 
 //////////////////////////////////////////////////////////////////////
@@ -98,39 +151,40 @@ void test_packet_framing() {
   }
 };
 
-uint8_t *G_rx_buf;
-uint16_t G_rx_buflen;
-
-static void parse_cb(uint8_t *buf, uint16_t buflen, uint8_t addr, uint8_t control, uint8_t fcs_match) {
-  printf("Got packet: %d!", buflen);
-  G_rx_buf = buf;
-  G_rx_buflen = buflen;
-}
 
 void test_packet_parsing() {
-
-#define NCASES 2
+#undef NCASES
+#define NCASES 3
   struct framing_case cases [NCASES] = {
-
                                         { "~asdf~foo}{}", 12, "~d\x00\x00\x10}~asdf}~foo}}{}}T\xc6~", 24 },
-                                        { "", 0, "~d\x0\x0\x0\xe8)~", 8 },                                      
+                                        { "", 0, "~d\x0\x0\x0\xe8)~", 8 },
+
+                                        // Test a case where we get an unescaped ~ in body: should reset state
+                                        { "~asdf~foo}{}", 12, "~d\x00\x00\x10}~a~d\x00\x00\x10}~asdf}~foo}}{}}T\xc6~", 32 },
   };
 
-
-  uint8_t buf[1024];
-
-
-  parser_init(parse_cb, buf);
-
   for (int i = 0; i < NCASES; i++) {
+    char caseno[32];
+
+    snprintf(caseno, 32, "Case %d", i);
+
     for (int j = 0; j < cases[i].expected_len; j++) {
       uint8_t x = cases[i].expected[j];
       packet_rx_byte(x);
-      printf("%d] %02x -> %s\n", j, x, parser_state_name());
+
+      printf("%3d] %02x -> %14s: ", j, x, parser_state_name());
+      dump_buf("G_buf j", G_buf, cases[i].expected_len);
     }
-    TEST_ASSERT_EQUAL(cases[i].len, G_rx_buflen);
-    if (G_rx_buflen)
-      TEST_ASSERT_EQUAL_UINT8_ARRAY(cases[i].buf, G_rx_buf, cases[i].len);
+
+    TEST_ASSERT_EQUAL_MESSAGE(G_buf+1+1+1+2, G_rx_buf, caseno); // We expect that our rx buf is the buf we passed in
+    TEST_ASSERT_EQUAL_MESSAGE(cases[i].len, G_rx_buflen, caseno);
+    TEST_ASSERT_EQUAL_MESSAGE(0, G_rx_control, caseno);
+    TEST_ASSERT_EQUAL_MESSAGE('d', G_rx_addr, caseno);
+    TEST_ASSERT_EQUAL_MESSAGE(1, G_rx_fcs_match, caseno);
+    if (G_rx_buflen) {
+      printf("Case buf: '%s' Got: '%s' (%p)\n", cases[i].buf, G_rx_buf, G_rx_buf);
+      TEST_ASSERT_EQUAL_UINT8_ARRAY_MESSAGE(cases[i].buf, G_rx_buf, cases[i].len, caseno);
+    }
   }
 
 

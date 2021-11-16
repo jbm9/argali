@@ -1,6 +1,11 @@
 #include "packet.h"
-#include "console.h"
 #include "logging.h"
+
+#ifdef TEST_UNITY
+#warning On a test stand; building without packet_send
+#else
+#include "console.h"
+#endif
 
 /**
  * \file packet.c
@@ -62,6 +67,10 @@
 */
 
 
+#ifdef TEST_UNITY
+#warning On a test stand; building without packet_send
+#else
+
 /**
  * \brief Sends a single packet out over serial
  */
@@ -82,6 +91,7 @@ void packet_send(const uint8_t *buf, uint16_t buflen, uint8_t address, uint8_t c
     console_send_blocking('~');
   }
 }
+#endif
 
 
 /**
@@ -171,6 +181,7 @@ static packet_parser_data_t parse_state;
 
 static void parser_reset(void) {
   parse_state.state = IDLE;
+  parse_state.bytes_rem = 0;
   parse_state.buf_cursor = 0;
   parse_state.fcs = PACKET_FCS_INITIAL;
 }
@@ -228,10 +239,22 @@ void packet_rx_byte(uint8_t c) {
         (parse_state.state != WAIT_CKSUM_LO)) {
       parse_state.fcs = fcs_step(c, parse_state.fcs);
     }
+  } else {
+    // Got an escape, need to FCS that, too.
+    parse_state.fcs = fcs_step(c, parse_state.fcs);
   }
 
+  // If we're in the body (or got an escape in the body), expect one
+  // less byte of input now.
   if ((parse_state.state == IN_BODY) || (parse_state.state == ESCAPE_FOUND)) {
     parse_state.bytes_rem--;
+  }
+
+  if ((parse_state.state == IN_BODY) && is_flag) {
+    // An unescaped ~ in a body likely means a previous transfer was
+    // abandoned, and we are now picking up a new one.  Reset to
+    // IDLE, then fall through
+    parser_reset();
   }
 
   switch(parse_state.state) {
@@ -264,7 +287,7 @@ void packet_rx_byte(uint8_t c) {
 
     parse_state.bytes_rem = parse_state.pktlen;
     if (parse_state.bytes_rem > PACKET_MAX_PAYLOAD_LENGTH) {
-      logline(LEVEL_ERROR, "Packet size too big: %d, aborting", parse_state.bytes_rem);
+      // logline(LEVEL_ERROR, "Packet size too big: %d, aborting", parse_state.bytes_rem);
       parser_reset();
       return;
     }
