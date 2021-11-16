@@ -44,6 +44,7 @@
  * \dot
  digraph G {
  IDLE -> WAIT_ADDR [label="got 0x7E"] ;
+ IDLE -> IDLE [label="Got anything but 0x7E"];
  WAIT_ADDR -> WAIT_CONTROL [label = "Got byte"];
  WAIT_ADDR -> WAIT_ADDR [label = "Got 0x7E"];
  WAIT_CONTROL -> WAIT_LENGTH_HI [label="Got byte"];
@@ -210,8 +211,13 @@ void packet_rx_byte(uint8_t c) {
     return;
   }
 
+  // Ignore noise on the line while waiting for a flag
+  if ((parse_state.state == IDLE) && !is_flag) {
+    return;
+  }
+
   // We copy over every byte, except for escapes or when the link is in WAIT_ADDR
-  if (!(parse_state.state == IN_BODY && is_escape)) {
+  if (!((parse_state.state == IN_BODY) && is_escape)) {
     parse_state.rx_buf[parse_state.buf_cursor] = c;
     parse_state.buf_cursor++;
 
