@@ -1,4 +1,6 @@
 #include "packet.h"
+#include "console.h"
+#include "logging.h"
 
 /**
  * \file packet.c
@@ -20,8 +22,6 @@
  * I have not yet found good test cases for this, so it's not
  * necessarily fully correct.  That said, we have an implementation in
  * C and python, which suffices.
- *
- *
  *
  */
 
@@ -48,11 +48,11 @@
  WAIT_ADDR -> WAIT_ADDR [label = "Got 0x7E"];
  WAIT_CONTROL -> WAIT_LENGTH_HI [label="Got byte"];
  WAIT_LENGTH_HI -> WAIT_LENGTH_LO [label="Got byte"];
- WAIT_LENGTH_LO -> IN_BODY [label = "Lenght complete"];
+ WAIT_LENGTH_LO -> IN_BODY [label = "Length complete"];
+ WAIT_LENGTH_LO -> IDLE [label = "Packet length exceeds maximum"];
  IN_BODY -> ESCAPE_FOUND [label = "got 0x7D"];
  ESCAPE_FOUND -> IN_BODY [label = "Resolve escaping"];
  IN_BODY -> IN_BODY [label="byte"];
-
  IN_BODY -> WAIT_CKSUM_HI;
  WAIT_CKSUM_HI -> WAIT_CKSUM_LO;
  WAIT_CKSUM_LO -> IDLE;
@@ -60,14 +60,27 @@
  \enddot
 */
 
-#if 0
+
 /**
  * \brief Sends a single packet out over serial
  */
 void packet_send(const uint8_t *buf, uint16_t buflen, uint8_t address, uint8_t command) {
+  uint8_t pktbuf[1024];
+  uint16_t pktlen;
+  pktlen = packet_frame(pktbuf, (uint8_t*)buf, buflen, address, command);
 
+  int i;
+  for (i = 0; i < 4; i++) {
+    console_send_blocking('~');
+  }
+
+  for (i = 0; i < pktlen; i++) {
+    console_send_blocking(pktbuf[i]);
+  }
+  for (i = 0; i < 4; i++) {
+    console_send_blocking('~');
+  }
 }
-#endif
 
 
 /**
@@ -162,10 +175,11 @@ static void parser_reset(void) {
 }
 
 
-void parser_init(parser_callback cb, uint8_t *buf) {
+void parser_setup(parser_callback cb, uint8_t *buf, uint16_t buflen) {
   parser_reset();
   parse_state.callback = cb;
   parse_state.rx_buf = buf;
+  parse_state.rx_buf_len = buflen;
 }
 
 const char *parser_state_name() {
@@ -243,6 +257,11 @@ void packet_rx_byte(uint8_t c) {
     parse_state.pktlen += c;
 
     parse_state.bytes_rem = parse_state.pktlen;
+    if (parse_state.bytes_rem > PACKET_MAX_PAYLOAD_LENGTH) {
+      logline(LEVEL_ERROR, "Packet size too big: %d, aborting", parse_state.bytes_rem);
+      parser_reset();
+      return;
+    }
     parse_state.state = (parse_state.pktlen ? IN_BODY : WAIT_CKSUM_HI);
 
     break;

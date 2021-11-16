@@ -9,19 +9,21 @@
 #include <stdio.h>
 #include <unistd.h>
 
-#include "system_clock.h"
 #include "logging.h"
+
+#include "system_clock.h"
 #include "console.h"
 #include "buttons.h"
 #include "dac.h"
 #include "adc.h"
 #include "leds.h"
+
 #include "syscalls.h"
 #include "tamo_state.h"
 #include "sin_gen.h"
 #include "pi_reciter.h"
 #include "dtmf.h"
-
+#include "packet.h"
 
 
 // First, a dirty hack to get our version string set up.
@@ -188,11 +190,31 @@ static void tone_stop(void) {
 // Callbacks
 
 /**
+ * Callback for packet decodes
+ */
+static void packet_handler(uint8_t *payload, uint16_t payload_len,
+                           uint8_t addr, uint8_t control,
+                           uint8_t fcs_match)
+{
+  if ((payload[0] == 'E') && (payload[1] == 'Q')) {
+    logline(LEVEL_DEBUG_NOISY, "Got an echo request");
+    payload[1] = 'R';
+    packet_send(payload, payload_len, addr, control);
+    return;
+  }
+
+  payload[payload_len] = 0; // DANGER
+  logline(LEVEL_DEBUG_NOISY, "Got a payload packet: %02x/%02x: %d bytes cksum_match=%d, %s",
+          addr, control, payload_len, fcs_match, payload);
+}
+
+/**
  * Callback for serial console inputs
  */
 static void console_line_handler(char *line, uint32_t line_len) {
-  line_len = line_len;  // Make the unused parameter warning go away
-  logline(LEVEL_INFO, "Got line: %s", line);
+  for (uint32_t i = 0; i < line_len; i++) {
+    packet_rx_byte(line[i]);
+  }
 }
 
 
@@ -258,6 +280,7 @@ int main(void) {
   tamo_state_t tamo_state;
 
   static char console_rx_buffer[1024]; //!< Buffer for the console to use
+  static uint8_t packet_rx_buf[1024]; //!< Buffer for the packet handler to use
 
   float dtmf_threshold = 0.5;
 
@@ -269,8 +292,9 @@ int main(void) {
   system_clock_setup();
 
   memset(console_rx_buffer, 0, 1024);
-  console_setup(&console_line_handler, console_rx_buffer, 1024);
+  console_setup(&console_line_handler, console_rx_buffer, 8);
   log_forced("TamoDevBoard startup, version " xstr(ARGALI_VERSION) " Compiled " __TIMESTAMP__);
+  parser_setup(&packet_handler, packet_rx_buf, 1024);
 
   //
   // End critical init section /////////////////////
@@ -303,8 +327,6 @@ int main(void) {
   // And then set up DTMF decoding
   modem_state = MODEM_IDLE;
   dtmf_init(adc_sample_rate, dtmf_threshold, dtmf_tone_start_cb, dtmf_tone_stop_cb);
-  // Prime DTMF decoding, will start first digit for now
-  //  dtmf_tone_stop_cb('D', 0);
 
 
   ////////////////////////////////////////////////////////////
@@ -313,6 +335,8 @@ int main(void) {
   while (1) {
     // Run this loop at about 10Hz, and poll for inputs.  (Huge antipattern!)
     for (int j = 0; j < 10; j++) {
+      console_trigger();
+
       bool user_present = button_poll();
 
       if ((modem_state == MODEM_RESTART) || (modem_state == MODEM_DONE)) {

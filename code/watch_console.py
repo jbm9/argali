@@ -1,32 +1,34 @@
 #!/usr/bin/env python3
 
+from enum import Enum
+import struct
+import time
+
 import serial
 
-import struct
-
-from enum import Enum
 
 class FrameAddress(Enum):
     '''Allowable addresses for packets we can send/receive'''
     DEVICE = b'd'
     DUT = b't'
     CONTROL = b'C'
+    LOGGING = b'L'
 
 class Frame:
     def __init__(self, address: FrameAddress, control: int, payload: bytes):
         self.address = address
         self.control = control
         self.payload = payload
-        
+
     def frame(self):
         pass
-        
+
 
 class Framer:
     '''Implements the serial level line framing'''
     FLAG = b'~'
     ESCAPE = b'}'
-    
+
     @classmethod
     def frame(cls, payload: bytes, address = FrameAddress.DEVICE, control = 0) -> bytes:
         if -1 == payload.find(cls.FLAG) and -1 == payload.find(cls.ESCAPE):
@@ -38,20 +40,20 @@ class Framer:
                 if b in [ord(cls.FLAG), ord(cls.ESCAPE)]:
                     escaped_payload.append(ord(cls.ESCAPE))
                 escaped_payload.append(b)
-        
+
         l = len(escaped_payload)
         fmt = f"!cBH{l}s"
 
-        body = struct.pack(fmt, 
-                           address.value, control, 
+        body = struct.pack(fmt,
+                           address.value, control,
                            l, escaped_payload)
 
         # Checksum includes all fields except the frame flags and
         # FCS itself, so we need to prepare its input separately.
         cksum = Framer.fcs(body)
-        
+
         result = struct.pack(f'!c{l+4}sHc', cls.FLAG, body, cksum, cls.FLAG)
-        
+
         return result
 
     @classmethod
@@ -81,11 +83,15 @@ class SerialRX:
     MAX_PACKET_LEN = 1500
 
     def __init__(self, cb):
+        '''Set up a SerialRX state machine
+
+        cb is a callback which takes a Frame instance as an argument
+        '''
         self.state = RXState.IDLE
         self.cb = cb
-        
+
         self._reset_state()
-        
+
     def _reset_state(self):
         '''Resets the state ofthe parser'''
         self.accumulator = []
@@ -94,13 +100,13 @@ class SerialRX:
         self.cur_control = None
         self.cur_len = None
         self.cur_cksum = None
-        
+
         self.body_rem = None  # Bytes left in the body of the current frame
-                
+
     def rx_byte(self, b):
         is_escape = (b == ord(Framer.ESCAPE))
         is_flag = (b == ord(Framer.FLAG))
-        
+
         # print(". ", self.state, b, is_escape, is_flag)
 
         if self.state == RXState.IDLE:
@@ -154,7 +160,7 @@ class SerialRX:
             # We blindly pass through anything we get after an escape
             self.accumulator.append(b)
             self.body_rem -= 1
-            self.state = RXState.IN_BOD
+            self.state = RXState.IN_BODY
 
         if self.state == RXState.IN_BODY and self.body_rem == 0:
             self.state = RXState.WAIT_CKSUM_HI
@@ -179,24 +185,105 @@ class SerialRX:
             self.rx_byte(b)
 
 
-last_bytes = []
 
-def print_frame(f):
-    print(f'Frame: {f.address}/{f.control}: {f.payload}')
-    last_bytes = []
-    
-rx = SerialRX(print_frame)
+class ArgaliConsole:
 
-s = serial.Serial("/dev/ttyACM0", 115200)
+    def __init__(self, s):
+        self.s = s
+        self.rx = SerialRX(self.frame_cb)
+
+        self.last_bytes = []  # Accumulator for bytes, used do debug bad frames
+
+        self.pending_frames = []  # A list of frames to send
+
+        self.dump_serial_inbound = False
+
+        self.pending_echo = False
+        self.last_echo_sent = None
+
+    def tx(self, bs):
+        #print(f'     {len(bs):4d} >> {bs}')
+        return self.s.write(bs)
+
+    def poll(self):
+        buf = s.read(10)
+        if buf and self.dump_serial_inbound:
+            print(f'<< {buf}')
+        self.last_bytes.extend(buf)
+        try:
+            self.rx.rx(buf)
+        except Exception as e:
+            print(f'Exception {e}: bytes={self.last_bytes}')
+            self.last_bytes = []
+
+        if self.pending_frames:
+            f = self.pending_frames.pop(0)
+            #print(f'Need to send a frame: {f}')
+            #print(f'    >> Sending frame len={len(f)}')
+            n = self.tx(b'~~~')
+            #print(f'Preamble sent: {n}')
+            n += self.tx(f)
+            #print(f'Payload sent: {n}-3/{len(f)}')
+            if len(f) % 8:
+                self.tx(b'~' * (8 - (n%8)))
+
+    def enqueue(self, f):
+        #print(f'Enqueueing frame: {f}')
+        self.pending_frames.append(f)
+
+    def frame_cb(self, f):
+        self.last_bytes = []
+
+        if f.address == ord('L'):
+            print(f'                                         Logline: {f.payload.decode()}')
+            return
+
+        print(f'     Got frame: {f.address}/{f.control}: {f.payload[0]}')
+
+        if f.payload[0] == ord('E'):
+            print(f'Handling echo')
+            self._echo_rx(f.payload)
+
+
+    def echo(self, s, rq="Q"):
+        '''Request the remote side echo back a blob of data'''
+        payload = f'E{rq}{s}'.encode('ISO8859-1')
+        self.enqueue(Framer.frame(payload))
+        self.pending_echo = True
+        self.last_echo_sent = time.time()
+
+    def _echo_rx(self, payload):
+        '''Handles inbound echo packets'''
+
+        print(f'Got an echo packet inbound: {payload[0]}/{payload[1]}')
+        if payload[0] != ord('E'):
+            raise ValueError(f'Called echo rx on a packet with type "{payload[0]}" != "E": {payload}')
+        qr = payload[1]
+        if qr == ord("R"):
+            print(f'Got echo Response: {payload[2:]}')
+            self.pending_echo = False
+            self.last_echo_sent = None
+
+        elif qr == ord("Q"):
+            print(f'Got an echo request: {payload[2:]}, enqueuing response')
+            self.echo(payload[2:], "R")
+
+    def reset_req(self):
+        '''Request the remote target to reset itself'''
+
+
+
+s = serial.Serial("/dev/ttyACM0", 115200, timeout=0)
+ac = ArgaliConsole(s)
+
+n_loops = 0
 
 while True:
-    buf = s.read(1)
-    last_bytes.append(buf[0])
-    #print(f'<< {buf[0]:02x}')
-    try:
-        rx.rx_byte(buf[0])
-    except Exception as e:
-        print(f'!! Caught exception: {e}')
-        rx._reset_state()
-        print(f'Bytes up to this: {list(map(chr, last_bytes))}')
-        last_bytes = []
+    ac.poll()
+    n_loops += 1
+
+    if 0 == (n_loops % 100):
+        if not ac.pending_echo or (time.time() - ac.last_echo_sent) > 5:
+            print('saying hi')
+            ac.echo(f"Hi there {n_loops}")
+    time.sleep(0.01)

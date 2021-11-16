@@ -20,6 +20,8 @@
 
 #define PACKET_FRAMING_OVERHEAD 8 //!< The number of bytes that are used for framing overhead
 
+#define PACKET_MAX_PAYLOAD_LENGTH PACKET_MAX_LENGTH - PACKET_FRAMING_OVERHEAD //!< Maximum payload length
+
 #define PACKET_FCS_INITIAL 0xFFFF  //!< Default initial state of our FCS checksum
 
 uint16_t packet_fcs(const uint8_t *, uint16_t, uint16_t);
@@ -29,17 +31,26 @@ uint16_t packet_frame(uint8_t *, const uint8_t *, uint16_t, uint8_t, uint8_t);
  * \brief The possible states our parser can be in
  */
 enum parser_state {
-                   IDLE = 0,
-                   WAIT_ADDR,
-                   WAIT_CONTROL,
-                   WAIT_LENGTH_HI,
-                   WAIT_LENGTH_LO,
-                   IN_BODY,
-                   ESCAPE_FOUND,
-                   WAIT_CKSUM_HI,
-                   WAIT_CKSUM_LO,
+                   IDLE = 0,       //!< Channel is idle, waiting for preamble
+                   WAIT_ADDR,      //!< Got preamble, waiting for an address
+                   WAIT_CONTROL,   //!< Got address, waiting for control word
+                   WAIT_LENGTH_HI, //!< Got control word, waiting for first length byte
+                   WAIT_LENGTH_LO, //!< Got first length byte, waiting for lower byte
+                   IN_BODY,        //!< Receiving body data
+                   ESCAPE_FOUND,   //!< Found an escape character in the body
+                   WAIT_CKSUM_HI,  //!< Done with body, waiting for FCS first byte
+                   WAIT_CKSUM_LO,  //!< Got first FCS byte, waiting for second to complete
 };
 
+/**
+ * A callback for when a completed packet is received.
+ *
+ * First parameter a pointer to the completed buffer (with escapes still intact)
+ * Second is the buffer length
+ * Third is the address given
+ * Fourth is the control code given
+ * Final argument is whether or not the checksum matched
+ */
 typedef   void (*parser_callback)(uint8_t *, uint16_t, uint8_t, uint8_t, uint8_t);
 
 /**
@@ -48,6 +59,7 @@ typedef   void (*parser_callback)(uint8_t *, uint16_t, uint8_t, uint8_t, uint8_t
 typedef struct packet_parser_data {
   enum parser_state state;
   uint8_t *rx_buf;
+  uint16_t rx_buf_len;
   uint16_t buf_cursor;
 
   uint16_t bytes_rem;
@@ -64,7 +76,7 @@ typedef struct packet_parser_data {
 
 
 const char *parser_state_name(void);
-void parser_init(parser_callback, uint8_t *);
+void parser_setup(parser_callback, uint8_t *, uint16_t);
 void packet_rx_byte(uint8_t);
-
+void packet_send(const uint8_t *, uint16_t, uint8_t, uint8_t);
 /** \} */
