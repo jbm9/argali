@@ -166,6 +166,8 @@ static void adc_setup_dma(uint8_t *buf, const uint32_t buflen) {
                              .transfer_complete_interrupt = 1,
                              .enable_irq = 1,
                              .irqn = NVIC_DMA2_STREAM0_IRQ,
+
+                             .enable_stream = 0,
   };
 
   dma_setup(&settings);
@@ -213,6 +215,7 @@ uint32_t adc_stop(void) {
 void adc_start(void) {
   rcc_periph_clock_enable(RCC_ADC1);
   adc_setup_dma(dma_buffer.buf, dma_buffer.buflen);
+  dma_enable_stream(DMA2, DMA_STREAM0);
   adc_start_conversion_regular(ADC1);
 }
 

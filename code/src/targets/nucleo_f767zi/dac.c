@@ -75,6 +75,8 @@ static void dac_dma_setup(const uint8_t *waveform, uint16_t npoints)
                              .transfer_complete_interrupt = 0,
                              .enable_irq = 1,
                              .irqn = NVIC_DMA1_STREAM5_IRQ,
+
+                             .enable_stream = 0,
   };
 
   dma_setup(&settings);

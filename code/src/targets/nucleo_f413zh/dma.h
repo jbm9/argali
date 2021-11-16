@@ -46,6 +46,8 @@ typedef struct dma_settings {
   bool enable_irq; //!< Whether or not to enable the NVIC IRQ here
   uint8_t irqn; //!< The IRQ to enable with nvic_enable_irq (NVIC_DMA1_STREAM5_IRQ)
 
+  bool enable_stream; //!< Whether or not to enable the stream
+
 } dma_settings_t;
 
 void dma_setup(dma_settings_t *);

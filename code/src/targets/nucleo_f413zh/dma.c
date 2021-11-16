@@ -99,7 +99,8 @@ void dma_setup(dma_settings_t *s) {
     nvic_enable_irq(s->irqn);
 
   // 10. Activate the stream
-  dma_enable_stream(s->dma, s->stream);
+  if (s->enable_stream)
+    dma_enable_stream(s->dma, s->stream);
 }
 
 
