@@ -40,21 +40,29 @@ class Framer:
                 if b in [ord(cls.FLAG), ord(cls.ESCAPE)]:
                     escaped_payload.append(ord(cls.ESCAPE))
                 escaped_payload.append(b)
-
         l = len(escaped_payload)
-        fmt = f"!cBH{l}s"
 
-        body = struct.pack(fmt,
-                           address.value, control,
-                           l, escaped_payload)
+        escaped_frame = bytearray()
+        def _enframe(b):
+            if b in [ord(cls.FLAG), ord(cls.ESCAPE)]:
+                escaped_frame.append(ord(cls.ESCAPE))
+            escaped_frame.append(b)
 
-        # Checksum includes all fields except the frame flags and
-        # FCS itself, so we need to prepare its input separately.
-        cksum = Framer.fcs(body)
+        _enframe(address.value[0])
+        _enframe(control)
+        _enframe((l & 0xFF00) >> 8)
+        _enframe((l & 0xFF))
+        escaped_frame.extend(escaped_payload)
 
-        result = struct.pack(f'!c{l+4}sHc', cls.FLAG, body, cksum, cls.FLAG)
+        cksum = Framer.fcs(escaped_frame)
+        _enframe((cksum & 0xFF00) >> 8)
+        _enframe((cksum & 0xFF))
 
-        return result
+        result = bytearray()
+        result.append(ord(cls.FLAG))
+        result.extend(escaped_frame)
+        result.append(ord(cls.FLAG))
+        return bytes(result)
 
     @classmethod
     def fcs(cls, buf: bytes):
@@ -103,9 +111,18 @@ class SerialRX:
 
         self.body_rem = None  # Bytes left in the body of the current frame
 
+        self.saw_escape = False
+
     def rx_byte(self, b):
         is_escape = (b == ord(Framer.ESCAPE))
         is_flag = (b == ord(Framer.FLAG))
+
+        if not self.saw_escape and is_escape:
+            self.saw_escape = True
+            if self.state == RXState.IN_BODY:
+                # Escapes in body count toward frame length
+                self.body_rem -= 1
+            return
 
         # print(". ", self.state, b, is_escape, is_flag)
 
@@ -285,5 +302,5 @@ while True:
     if 0 == (n_loops % 100):
         if not ac.pending_echo or (time.time() - ac.last_echo_sent) > 5:
             print('saying hi')
-            ac.echo(f"Hi there {n_loops}")
+            ac.echo(f"Hi there ~ {{ }} ~ ~{n_loops}")
     time.sleep(0.01)
