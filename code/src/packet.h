@@ -37,7 +37,6 @@ enum parser_state {
                    WAIT_LENGTH_HI, //!< Got control word, waiting for first length byte
                    WAIT_LENGTH_LO, //!< Got first length byte, waiting for lower byte
                    IN_BODY,        //!< Receiving body data
-                   ESCAPE_FOUND,   //!< Found an escape character in the body
                    WAIT_CKSUM_HI,  //!< Done with body, waiting for FCS first byte
                    WAIT_CKSUM_LO,  //!< Got first FCS byte, waiting for second to complete
 };
@@ -58,6 +57,7 @@ typedef   void (*parser_callback)(uint8_t *, uint16_t, uint8_t, uint8_t, uint8_t
  */
 typedef struct packet_parser_data {
   enum parser_state state;
+  uint8_t saw_escape; //!< Unescaped escapes do not escape our first input.
   uint8_t *rx_buf;
   uint16_t rx_buf_len;
   uint16_t buf_cursor;
@@ -71,12 +71,16 @@ typedef struct packet_parser_data {
   uint16_t fcs_expected;
 
   parser_callback callback;
+  parser_callback too_long_callback;
+  parser_callback pkt_interrupted_callback;
 
 } packet_parser_data_t;
 
 
 const char *parser_state_name(void);
 void parser_setup(parser_callback, uint8_t *, uint16_t);
+void parser_register_too_long_cb(parser_callback);
+void parser_register_pkt_interrupted_cb(parser_callback);
 void packet_rx_byte(uint8_t);
 void packet_send(const uint8_t *, uint16_t, uint8_t, uint8_t);
 /** \} */

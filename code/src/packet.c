@@ -1,5 +1,4 @@
 #include "packet.h"
-#include "logging.h"
 
 #ifdef TEST_UNITY
 #warning On a test stand; building without packet_send
@@ -55,6 +54,7 @@
  WAIT_CONTROL -> WAIT_LENGTH_HI [label="Got byte"];
  WAIT_LENGTH_HI -> WAIT_LENGTH_LO [label="Got byte"];
  WAIT_LENGTH_LO -> IN_BODY [label = "Length complete"];
+ WAIT_LENGTH_LO -> WAIT_CKSUM_HI [label = "Empty body"];
  WAIT_LENGTH_LO -> IDLE [label = "Packet length exceeds maximum"];
  IN_BODY -> ESCAPE_FOUND [label = "got 0x7D"];
  ESCAPE_FOUND -> IN_BODY [label = "Resolve escaping"];
@@ -95,6 +95,18 @@ void packet_send(const uint8_t *buf, uint16_t buflen, uint8_t address, uint8_t c
 
 
 /**
+ * Yuuuup.
+ */
+static inline void add_escaped(uint8_t **cursor, uint8_t v) {
+  if (v == PACKET_FLAG || v == PACKET_ESCAPE) {
+    **cursor = PACKET_ESCAPE;
+    (*cursor)++;
+  }
+  **cursor = v;
+  (*cursor)++;
+}
+
+/**
  * \brief Creates a fully-escaped packet in dst for the given buffer.
  *
  * \param dst Destination buffer, must be adequately sized
@@ -107,36 +119,33 @@ void packet_send(const uint8_t *buf, uint16_t buflen, uint8_t address, uint8_t c
  */
 uint16_t packet_frame(uint8_t *dst, const uint8_t *buf, uint16_t buflen, uint8_t address, uint8_t command) {
   uint8_t *c; // Cursor to copy over with escaping
+  uint8_t *lenpt; // Cursor to the length field: variable due to escaping of addr/cmd!
 
   c = dst;
   *c = PACKET_FLAG; c++;
-  *c = address; c++;
-  *c = command; c++;
+  add_escaped(&c, address);
+  add_escaped(&c, command);
+
   // Don't write the length yet, so skip two bytes
+  lenpt = c;  // Save this to write to later
   c += 2;
 
   for (int i = 0; i < buflen; i++) {
-    if ( (buf[i] == PACKET_FLAG) || (buf[i] == PACKET_ESCAPE) ) {
-      *c = PACKET_ESCAPE;
-      c++;
-    }
-    *c = buf[i];
-    c++;
+    add_escaped(&c, buf[i]);
   }
 
   // Write out the destination length
-  uint16_t dstlen = c - dst - 1-1-1-2;  // length doesn't include header bytes
-  dst[3] = (dstlen & 0xFF00) >> 8;
-  dst[4] = (dstlen & 0xFF);
+  uint16_t dstlen = c - lenpt - 2;  // length doesn't include header bytes
+  add_escaped(&lenpt, (dstlen & 0xFF00) >> 8);
+  add_escaped(&lenpt, (dstlen & 0xFF));
 
   uint16_t fcs = packet_fcs(dst+1, dstlen+1+1+2, PACKET_FCS_INITIAL);
 
-  *c = (fcs & 0xFF00) >> 8; c++;
-  *c = (fcs & 0xFF); c++;
+  add_escaped(&c, (fcs & 0xFF00) >> 8);
+  add_escaped(&c, (fcs & 0xFF));
   *c = PACKET_FLAG; c++;
 
-
-  return dstlen + PACKET_FRAMING_OVERHEAD;
+  return (c - dst);
 }
 
 
@@ -184,6 +193,7 @@ static void parser_reset(void) {
   parse_state.bytes_rem = 0;
   parse_state.buf_cursor = 0;
   parse_state.fcs = PACKET_FCS_INITIAL;
+  parse_state.saw_escape = 0;
 }
 
 
@@ -192,7 +202,40 @@ void parser_setup(parser_callback cb, uint8_t *buf, uint16_t buflen) {
   parse_state.callback = cb;
   parse_state.rx_buf = buf;
   parse_state.rx_buf_len = buflen;
+  parser_register_too_long_cb(NULL);
+  parser_register_pkt_interrupted_cb(NULL);
 }
+
+/**
+ * Register a callback to be called when a frame is too long
+ *
+ * If a frame is going to be too long, we abort it and return the
+ * parser to IDLE.  Before nuking state, though, we will pass the
+ * current buffer over to the controlling program for it to
+ * examine/log/etc.
+ *
+ * This callback is called with the raw buffer and current buffer
+ * position; all other parameters are reserved at this time.
+ */
+void parser_register_too_long_cb(parser_callback cb) {
+  parse_state.too_long_callback = cb;
+}
+
+/**
+ * Register a callback to be called when a frame is interrupted by a flag
+ *
+ * If we receive an unescaped flag character at any point in a frame,
+ * we assume that the previous frame has been abandoned and that a new
+ * one is starting.  Before resetting state, this callback is called.
+ *
+ * This is called with the raw buffer and current buffer position; all
+ * other parameters are reserved at this time.
+ */
+
+void parser_register_pkt_interrupted_cb(parser_callback cb) {
+  parse_state.pkt_interrupted_callback = cb;
+}
+
 
 const char *parser_state_name() {
   switch(parse_state.state) {
@@ -202,7 +245,6 @@ const char *parser_state_name() {
   case  WAIT_LENGTH_HI: return "WAIT_LENGTH_HI";
   case  WAIT_LENGTH_LO: return "WAIT_LENGTH_LO";
   case  IN_BODY: return "IN_BODY";
-  case  ESCAPE_FOUND: return "ESCAPE_FOUND";
   case  WAIT_CKSUM_HI: return "WAIT_CKSUM_HI";
   case  WAIT_CKSUM_LO: return "WAIT_CKSUM_LO";
   default:
@@ -215,48 +257,75 @@ void packet_rx_byte(uint8_t c) {
   int is_flag = (c == PACKET_FLAG);
   int is_escape = (c == PACKET_ESCAPE);
 
-  // The link can idle by sending flags repeatedly, so we will just
-  // quietly drop repeated entries but keep in the WAIT_ADDR state.
-
-  if ((parse_state.state == WAIT_ADDR) && is_flag) {
-    return;
+  // All bytes go into the checksum except IDLE flags and the
+  // checksums themselves.  This includes all escaping.
+  if ((parse_state.state != IDLE) &&
+      !(!parse_state.saw_escape && is_flag && (parse_state.state == WAIT_ADDR)) &&
+      (parse_state.state != WAIT_CKSUM_HI) &&
+      (parse_state.state != WAIT_CKSUM_LO)) {
+    parse_state.fcs = fcs_step(c, parse_state.fcs);
   }
+
+  if (!parse_state.saw_escape) {
+    if (is_escape) {
+      parse_state.saw_escape = 1;
+
+      // These escape bytes do count towards the packet length
+      if (parse_state.state == IN_BODY) {
+        parse_state.bytes_rem--;
+      }
+
+      return;
+    }
+
+    // The link can idle by sending flags repeatedly, so we will just
+    // quietly drop repeated entries but keep in the WAIT_ADDR state.
+
+    if ((parse_state.state == WAIT_ADDR) && is_flag && !parse_state.saw_escape) {
+      return;
+    }
+
+
+    // All unescaped flags reset to a new frame, except if we're
+    // already waiting for a frame start
+    if (is_flag
+        && (parse_state.state != IDLE)
+        && (parse_state.state != WAIT_ADDR)) {
+      if (parse_state.pkt_interrupted_callback) {
+        parse_state.pkt_interrupted_callback(parse_state.rx_buf, parse_state.buf_cursor, 0, 0, 0);
+      }
+
+      parser_reset();
+      // Fall through so the rest of the logic can do its thing
+    }
+  }
+
+
+  /////////////////////////////////////////////////////////////
+  // All escaping and FCS has been handled above this line
+
+  // We can now zero out our escape flag.
+  parse_state.saw_escape = 0;
+
+  // Handle a couple of common cases quickly
+
 
   // Ignore noise on the line while waiting for a flag
   if ((parse_state.state == IDLE) && !is_flag) {
     return;
   }
 
-  // We copy over every byte, except for escapes or when the link is in WAIT_ADDR
-  if (!((parse_state.state == IN_BODY) && is_escape)) {
-    parse_state.rx_buf[parse_state.buf_cursor] = c;
-    parse_state.buf_cursor++;
 
-    // And we checksum everything from the address byte up until we
-    // get to WAIT_CKSUM_HI.
-    if ((parse_state.state != IDLE) &&
-        (parse_state.state != WAIT_CKSUM_HI) &&
-        (parse_state.state != WAIT_CKSUM_LO)) {
-      parse_state.fcs = fcs_step(c, parse_state.fcs);
-    }
-  } else {
-    // Got an escape, need to FCS that, too.
-    parse_state.fcs = fcs_step(c, parse_state.fcs);
-  }
+  //////////////////////////////////////////////////
+  // All non-data has been handled above this line
 
-  // If we're in the body (or got an escape in the body), expect one
-  // less byte of input now.
-  if ((parse_state.state == IN_BODY) || (parse_state.state == ESCAPE_FOUND)) {
-    parse_state.bytes_rem--;
-  }
+  // Copy byte into the buffer
+  parse_state.rx_buf[parse_state.buf_cursor] = c;
+  parse_state.buf_cursor++;
+  parse_state.bytes_rem--;
 
-  if ((parse_state.state == IN_BODY) && is_flag) {
-    // An unescaped ~ in a body likely means a previous transfer was
-    // abandoned, and we are now picking up a new one.  Reset to
-    // IDLE, then fall through
-    parser_reset();
-  }
-
+  ///////////////////////////////////////////////////////
+  // All buffer modifications are handled above this line
   switch(parse_state.state) {
   case IDLE:
     if (is_flag) {
@@ -286,31 +355,24 @@ void packet_rx_byte(uint8_t c) {
     parse_state.pktlen += c;
 
     parse_state.bytes_rem = parse_state.pktlen;
+
+    // Handle too-long packets
     if (parse_state.bytes_rem > PACKET_MAX_PAYLOAD_LENGTH) {
-      // logline(LEVEL_ERROR, "Packet size too big: %d, aborting", parse_state.bytes_rem);
+      if (parse_state.too_long_callback) {
+        parse_state.too_long_callback(parse_state.rx_buf,
+                                      parse_state.buf_cursor,
+                                      0, 0, 0);
+      }
       parser_reset();
       return;
     }
+    // Wonky case here: if there is no body, go straight to checksums
     parse_state.state = (parse_state.pktlen ? IN_BODY : WAIT_CKSUM_HI);
-
     break;
 
   case IN_BODY:
-    if (is_escape) {
-      parse_state.state = ESCAPE_FOUND;
-      break;
-    }
-
     if (parse_state.bytes_rem == 0)
       parse_state.state = WAIT_CKSUM_HI;
-    break;
-
-  case ESCAPE_FOUND:
-    parse_state.state = IN_BODY;
-
-    if (parse_state.bytes_rem == 0)
-      parse_state.state = WAIT_CKSUM_HI;
-
     break;
 
   case WAIT_CKSUM_HI:
