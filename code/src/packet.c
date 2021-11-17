@@ -1,8 +1,6 @@
 #include "packet.h"
 
-#ifdef TEST_UNITY
-#warning On a test stand; building without packet_send
-#else
+#ifndef TEST_UNITY
 #include "console.h"
 #endif
 
@@ -67,10 +65,7 @@
 */
 
 
-#ifdef TEST_UNITY
-#warning On a test stand; building without packet_send
-#else
-
+#ifndef TEST_UNITY
 /**
  * \brief Sends a single packet out over serial
  */

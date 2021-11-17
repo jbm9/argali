@@ -65,10 +65,6 @@
  * with the input conversions.
  *
  * Pin assignments are in DocID 029162 Rev6 pp50-64
- *
- * PA3 is ADC1_IN3, which is also CN9.A0 on the nucleo board.  This
- * lets us not open another GPIO port just yet.  I worry about
- * crosstalk from our boredom tone a bit, but we'll see how it goes.
  */
 
 #include "adc.h"
