@@ -220,7 +220,12 @@ class ArgaliConsole:
 
     def tx(self, bs):
         #print(f'     {len(bs):4d} >> {bs}')
-        return self.s.write(bs)
+        n = self.s.write(bs)
+        if n != len(bs):
+            print(f'Partial write')
+        self.s.flush()
+        return n
+
 
     def poll(self):
         buf = s.read(10)
@@ -242,7 +247,10 @@ class ArgaliConsole:
             n += self.tx(f)
             #print(f'Payload sent: {n}-3/{len(f)}')
             if len(f) % 8:
-                self.tx(b'~' * (8 - (n%8)))
+                self.tx(b'~' * 8)
+            self.s.flush()
+        else:
+            self.tx(b'~' * 1)
 
     def enqueue(self, f):
         #print(f'Enqueueing frame: {f}')
@@ -252,10 +260,14 @@ class ArgaliConsole:
         self.last_bytes = []
 
         if f.address == ord('L'):
-            print(f'                                         Logline: {f.payload.decode()}')
+            print(f'                                         Logline({f.control}): {f.payload.decode("iso8859-1")}')
             return
 
-        print(f'     Got frame: {f.address}/{f.control}: {f.payload[0]}')
+        #print(f'     Got frame: {f.address}/{f.control}: {f.payload[0]}')
+
+        if f.payload[0] == ord('!'):
+            print(f'Got an error packet: {f.payload.decode("iso8859-1")}')
+            return
 
         if f.payload[0] == ord('E'):
             print(f'Handling echo')
@@ -285,15 +297,76 @@ class ArgaliConsole:
             print(f'Got an echo request: {payload[2:]}, enqueuing response')
             self.echo(payload[2:], "R")
 
+            
     def reset_req(self):
         '''Request the remote target to reset itself'''
+        payload = b'RQ'
+        self.enqueue(Framer.frame(payload))
 
 
+    def dac_config_req(self, prescaler, period, scale, ppw, num_waves):
+        '''Request a DAC setup'''
+        payload = struct.pack('>ccHLBHB', b"D",b"C", prescaler, period, scale, ppw, num_waves)
+        self.enqueue(Framer.frame(payload))
+
+    def dac_start_req(self):
+        self.enqueue(Framer.frame(b"DS"))
+
+    def dac_stop_req(self):
+        self.enqueue(Framer.frame(b"DT"))
+
+    def idle(self, n):
+        self.tx(b'~' * n)
+
+    def bogon(self):
+        self.enqueue(Framer.frame(b'xxfoo'))
 
 s = serial.Serial("/dev/ttyACM0", 115200, timeout=0)
 ac = ArgaliConsole(s)
 
 n_loops = 0
+
+if 1:
+    ac.idle(12)
+    print('Starting up')
+
+    def _pend():
+        print(".")
+        for _ in range(20):
+            ac.poll()
+            time.sleep(0.01)
+
+    def _wait(s):
+        print(f'Round-trippping: {s}')
+        ac.echo(s)
+        ac.poll()
+        while ac.pending_echo:
+            ac.poll()
+            time.sleep(0.01)
+
+
+    _pend()
+    ac.bogon();
+    _pend()
+    _wait("Testing connection")
+
+#    ac.reset_req()
+ #   time.sleep(5)
+  #  _pend()
+   # _wait("Reset finished")
+
+
+    ac.dac_config_req(9,1,2,125,1)
+    _pend()    
+    _wait("DAC Config")
+
+    ac.dac_start_req()
+    _wait("DAC Running")
+
+    time.sleep(3)
+    ac.dac_stop_req()
+    _wait("DAC STOP")
+
 
 while True:
     ac.poll()
@@ -301,6 +374,6 @@ while True:
 
     if 0 == (n_loops % 100):
         if not ac.pending_echo or (time.time() - ac.last_echo_sent) > 5:
-            print('saying hi')
+
             ac.echo(f"Hi there ~ {{ }} ~ ~{n_loops}")
     time.sleep(0.01)

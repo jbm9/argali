@@ -17,6 +17,7 @@
 #include "dac.h"
 #include "adc.h"
 #include "leds.h"
+#include "eol_commands.h"
 
 #include "syscalls.h"
 #include "tamo_state.h"
@@ -75,6 +76,8 @@ static uint8_t adc_buf[ADC_NUM_SAMPLES];
 static float adc_sample_rate; //!< The sampling rate of the ADC
 
 static uint8_t modem_state;
+
+static uint32_t console_callbacks_count;
 
 ////////////////////////////////////////////////////////////
 // Misc functions
@@ -175,6 +178,8 @@ static void tone_start_next_digit(void) {
   // Just blast over the existing buffer while it's on, the glitches
   // don't matter to us here.
   fill_dtmf_waveform_buf(f_row,f_col);
+  // Reinitialize DAC DMA buffer, in case it's been reset by the EOL code
+  dac_waveform_setup();
   dac_start();
   adc_start();
 }
@@ -196,25 +201,57 @@ static void packet_handler(uint8_t *payload, uint16_t payload_len,
                            uint8_t addr, uint8_t control,
                            uint8_t fcs_match)
 {
-  if ((payload[0] == 'E') && (payload[1] == 'Q')) {
-    logline(LEVEL_DEBUG_NOISY, "Got an echo request");
-    payload[1] = 'R';
-    packet_send(payload, payload_len, addr, control);
-    return;
-  }
-
   payload[payload_len] = 0; // DANGER
   logline(LEVEL_DEBUG_NOISY, "Got a payload packet: %02x/%02x: %d bytes cksum_match=%d, %s",
           addr, control, payload_len, fcs_match, payload);
+
+  if (!fcs_match) return;
+
 }
 
+static void packet_too_long(uint8_t *buf, uint16_t buf_len,
+                           uint8_t addr, uint8_t control,
+                           uint8_t fcs_match)
+{
+  logline(LEVEL_DEBUG_NOISY, "Got a too-long-packet: %02x %02x %02x %02x%02x (bytes seen=%ld)",
+          buf[0], buf[1], buf[2], buf[3], buf[4], console_callbacks_count );
+}
+
+
+static void packet_interrupted(uint8_t *buf, uint16_t buf_len,
+                               uint8_t addr, uint8_t control,
+                               uint8_t fcs_match)
+{
+  logline(LEVEL_DEBUG_NOISY, "Got an interrupted packet, after %d bytes: %02x %02x %02x %02x%02x",
+          buf_len, buf[0], buf[1], buf[2], buf[3], buf[4] );
+}
+
+
+#define SERBUFLEN 2048
+static uint8_t serbuf[SERBUFLEN];
+static uint8_t *serbuf_head;
+static uint8_t *serbuf_tail;
 /**
  * Callback for serial console inputs
  */
 static void console_line_handler(char *line, uint32_t line_len) {
-  for (uint32_t i = 0; i < line_len; i++) {
-    packet_rx_byte(line[i]);
+  // Reset cursor if we can
+  if (serbuf_head == serbuf_tail) {
+    serbuf_head = serbuf;
+    serbuf_tail = serbuf;
   }
+
+  if (serbuf_tail + line_len - serbuf > SERBUFLEN) {
+    console_dumps("Serial buffer overflow!");
+    serbuf_head = serbuf;
+    serbuf_tail = serbuf;
+    return;
+  }
+
+  memcpy(serbuf_tail, line,line_len);
+  serbuf_tail += line_len;
+
+  console_callbacks_count += line_len;
 }
 
 
@@ -284,6 +321,8 @@ int main(void) {
 
   float dtmf_threshold = 0.5;
 
+  console_callbacks_count = 0;
+
   // Only variables declaration/definitions above this line
   //////////////////////////////////////////////////
   // Critical init section /////////////////////////
@@ -291,10 +330,16 @@ int main(void) {
 
   system_clock_setup();
 
+  // LEDs before anything else, so we can use them anywhere.
+  led_setup();
+  led_green_on();
+
   memset(console_rx_buffer, 0, 1024);
   console_setup(&console_line_handler, console_rx_buffer, 8);
   log_forced("TamoDevBoard startup, version " xstr(ARGALI_VERSION) " Compiled " __TIMESTAMP__);
-  parser_setup(&packet_handler, packet_rx_buf, 1024);
+  parser_setup(eol_command_handle, packet_rx_buf, 1024);
+  parser_register_too_long_cb(&packet_too_long);
+  parser_register_pkt_interrupted_cb(&packet_interrupted);
 
   //
   // End critical init section /////////////////////
@@ -303,7 +348,6 @@ int main(void) {
   // Less critical setup starts here
 
   // Misc UI elements
-  led_setup();
   button_setup();
 
   // DAC
@@ -329,13 +373,18 @@ int main(void) {
   dtmf_init(adc_sample_rate, dtmf_threshold, dtmf_tone_start_cb, dtmf_tone_stop_cb);
 
 
+  console_dumps("\n\nSTARTUP\n\n");
+
   ////////////////////////////////////////////////////////////
   // Main Loop
   //
   while (1) {
     // Run this loop at about 10Hz, and poll for inputs.  (Huge antipattern!)
     for (int j = 0; j < 10; j++) {
-      console_trigger();
+
+      for ( ; serbuf_head < serbuf_tail; serbuf_head++) {
+        packet_rx_byte(*serbuf_head);
+      }
 
       bool user_present = button_poll();
 
@@ -353,6 +402,7 @@ int main(void) {
       }
 
       if (user_present) {
+        console_dumps("up");
       }
 
 

@@ -39,6 +39,22 @@ const char* log_level_to_str(log_level_t loglevel) {
   }
 }
 
+/**
+ * Convert a log level to a command type for framing
+ */
+static uint8_t log_level_to_cmd(log_level_t loglevel) {
+  switch(loglevel) {
+  case LEVEL_FORCED: return '#';
+  case LEVEL_FATAL: return 'X';
+  case LEVEL_ERROR: return 'E';
+  case LEVEL_WARN: return 'W';
+  case LEVEL_INFO: return 'I';
+  case LEVEL_DEBUG: return 'D';
+  case LEVEL_DEBUG_NOISY: return 'N';
+  default: return '?';
+  }
+}
+
 
 /**
  * \brief Log a line of text
@@ -57,7 +73,8 @@ void logline(log_level_t loglevel, const char *fmt, ...) {
   buflen = vsprintf(buf, fmt, argp);
   va_end(argp);
 
-  packet_send(buf, buflen, 'L', '!');
+  packet_send((const uint8_t*)buf, buflen, 'L',
+              log_level_to_cmd(loglevel));
 
   //printf("[%s] %s\n", log_level_to_str(loglevel), buf);
 }

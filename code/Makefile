@@ -13,7 +13,7 @@ TDIR = src/targets/$(TARGET)/
 # matches exactly across the many targets you might have.
 #
 # This should just be files in the "application" code.
-CFILES = main.c syscalls.c tamo_state.c logging.c sin_gen.c dtmf.c pi_reciter.c packet.c
+CFILES = main.c syscalls.c tamo_state.c logging.c sin_gen.c dtmf.c pi_reciter.c packet.c eol_commands.c
 
 ######################################################################
 # You shouldn't have to edit anything below here.
