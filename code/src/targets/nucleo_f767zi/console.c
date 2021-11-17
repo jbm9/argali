@@ -1,3 +1,6 @@
+#include <stdarg.h>
+#include <stdio.h>
+
 #include "console.h"
 #include "dma.h"
 
@@ -24,6 +27,144 @@
 
 
 static console_state_t console_state;
+#define DUMPBUFLEN 512 //!< Size of the buffer for the dump console
+static uint8_t dumpbuf[DUMPBUFLEN]; //!< Buffer for the dump console
+
+/**
+ * Set up our diagnostic/dumping console
+ *
+ * This is a write-only debugging aid that should be removed at some
+ * point.  Until then, it's a megabaud hole to shovel debug info into.
+ */
+static void console_dump_setup(void) {
+  // Enable our dump port clock
+  rcc_periph_clock_enable(CONSOLE_DUMP_CLOCK);
+
+  // And connect our debug dump pin as well
+  gpio_mode_setup(CONSOLE_PORT, GPIO_MODE_AF, GPIO_PUPD_NONE, CONSOLE_DUMP_PIN);
+  gpio_set_af(CONSOLE_PORT, CONSOLE_AFNO, CONSOLE_DUMP_PIN);
+  // Now actually set up the USART peripheral, laid out in 34.5.2
+  // "USART transmitter" section, which is on p1248.  The bringup for
+  // USART TX is on p1249 of RM0410r4. "Transmission using DMA" is on
+  // p1277.
+
+  // 1. Enable the USART by writing the UE bit in USART_CR1 register
+  // to 1.
+  usart_enable(CONSOLE_DUMP_USART);
+
+  // 2. Program the M bit in USART_CR1 to define the word length.
+  usart_set_databits(CONSOLE_DUMP_USART, 8); // We'll leave the 8N1 hard-coded here for now...
+  // (divergence from DS) I'm also putting all other CR1 stuff in here
+  usart_set_parity(CONSOLE_DUMP_USART, USART_PARITY_NONE);
+
+  // 3. Program the number of stop bits in USART_CR2.
+  usart_set_stopbits(CONSOLE_DUMP_USART, USART_STOPBITS_1);
+
+  // (divergence from DS) I'll slip the CR3 stuff in here now
+  usart_set_flow_control(CONSOLE_DUMP_USART, USART_FLOWCONTROL_NONE);
+
+  // 4. Select DMA enable (DMAT) in USART_CR3 if multibuffer
+  // communication is to take place. Configure the DMA register as
+  // explained in multibuffer communication.
+
+  // Supposed to DMA here?
+  usart_enable_tx_dma(CONSOLE_DUMP_USART);
+
+  // 5. Select the desired baud rate using the baud rate register
+  // USART_BRR
+  usart_set_baudrate(CONSOLE_DUMP_USART, CONSOLE_DUMP_BAUD);
+
+  // 6. Set the TE bit USART_CR1 to send an idle frame as the first
+  // transmission.
+  usart_set_mode(CONSOLE_DUMP_USART, USART_MODE_TX);
+
+  usart_enable(CONSOLE_DUMP_USART); // We enable again, per the the
+                                    // reception setup process step 6.
+}
+
+/**
+ * Dump formatted strings to the dump console
+ *
+ * This is used to effectively printf() to the debug console.
+ */
+void console_dumps(const char *fmt, ...) {
+  uint16_t buflen;
+  va_list argp;
+
+  va_start(argp, fmt);
+  buflen = vsprintf((char*)dumpbuf, fmt, argp);
+  va_end(argp);
+
+  console_dump((const uint8_t*)dumpbuf, buflen);
+}
+
+/**
+ * Dump a buffer out the dump console as hex
+ *
+ * \param buf Pointer to buffer of data
+ * \param buflen Length to dump out
+ *
+ * Note that buflen must be less than half of DUMPBUFLEN or you will
+ * run out of room.
+ */
+void console_dump_hex(const uint8_t *buf, uint16_t buflen) {
+  for (int i = 0; i < buflen; i++) {
+    sprintf((char*)dumpbuf+2*i, "%02x", buf[i]);
+  }
+  console_dump(dumpbuf, buflen*2);
+}
+
+/**
+ * Dump a buffer full of data out the dump buffer (DMA'd)
+ *
+ * \param buf The buffer to dump
+ * \param buflen How many bytes to dump
+ *
+ * This shovels data out the dump console (USART2, pin CN9.6 on the
+ * Nucleo 144) at 1Mbaud.  This is a bit over 8x faster than the input
+ * on the main console, which allows us a lot of freedom before we
+ * overflow the port.
+ */
+void console_dump(const uint8_t *buf, uint16_t buflen) {
+  // Bring up a DMA sender per p919
+
+  if (buflen > DUMPBUFLEN) {
+    console_dumps("oversize buffer truncated\n");
+    memcpy(dumpbuf, buf, DUMPBUFLEN);
+    memcpy(dumpbuf, "OVERSIZE", 8);
+  } else {
+    memcpy(dumpbuf, buf, buflen);
+  }
+
+  dma_settings_t settings = {
+                             .dma = DMA1,
+                             .stream = DMA_STREAM6,
+                             .channel = DMA_SxCR_CHSEL_4,
+                             .priority = DMA_SxCR_PL_HIGH,
+
+                             .direction = DMA_SxCR_DIR_MEM_TO_PERIPHERAL,
+                             .paddr = (uint32_t)&(USART_TDR(CONSOLE_DUMP_USART)),
+                             .peripheral_size = DMA_SxCR_PSIZE_8BIT,
+                             .buf = (uint32_t) dumpbuf,
+                             .buflen = buflen,
+                             .mem_size = DMA_SxCR_MSIZE_8BIT,
+
+                             .circular_mode = 0,
+                             .double_buffer = 0,
+
+                             .transfer_complete_interrupt = 1,
+                             .enable_irq = 0,
+                             .irqn = NVIC_DMA1_STREAM6_IRQ,
+
+                             .enable_stream = 1,
+  };
+
+  USART_ISR(CONSOLE_DUMP_USART) |= USART_ISR_TC;
+  dma_setup(&settings);
+}
+
+//////////////////////////////////////////////////////////////////////
+// Actual console implementation
 
 /**
  * \brief Configure all the peripherals needed for the serial console
@@ -56,6 +197,9 @@ void console_setup(console_cb cb, char *buf, uint32_t buflen) {
                              .enable_stream = 1,
   };
 
+  rcc_periph_clock_enable(CONSOLE_PORT_CLOCK);
+  console_dump_setup();
+
   // Set up our state
   memset(&console_state, 0, sizeof(console_state));
   console_state.cb = cb;
@@ -65,10 +209,8 @@ void console_setup(console_cb cb, char *buf, uint32_t buflen) {
 
   // Configuration process on p1278 for DMA RX
 
-  // Enable our DMA channel
-
-  // Enable USART3 clocks
-  rcc_periph_clock_enable(CONSOLE_PORT_CLOCK); // USART TX pin
+  // Enable our clocks
+  rcc_periph_clock_enable(CONSOLE_PORT_CLOCK);
   rcc_periph_clock_enable(CONSOLE_USART_CLOCK);
 
   // And the clock for our DMA
@@ -126,16 +268,6 @@ void console_send_blocking(const char c)
   usart_send_blocking(CONSOLE_USART, c);
 }
 
-/**
- * Force a console callback if there is data in the buffer
- */
-void console_trigger(void) {
-  uint32_t len = console_state.tail-console_state.buf;
-  if (0 == len) return;
-  console_state.cb(console_state.buf, len);
-  console_state.tail = console_state.buf;  // Reset pointer
-}
-
 
 //////////////////////////////////////////////////////////////////////
 // ISRs
@@ -157,25 +289,13 @@ void dma1_stream1_isr(void) {
 
     if (console_state.cb)
       console_state.cb((char*)bufpos, console_state.buflen/2);
+
+    console_dump_hex((const uint8_t*)bufpos, console_state.buflen/2);
   }
 }
 
 void CONSOLE_ISR_NAME(void)
 {
-  if (0 && usart_get_flag(CONSOLE_USART, USART_ISR_RXNE)) {
-    char c = USART_RDR(CONSOLE_USART);
-    uint32_t len;
-
-    *console_state.tail = c;
-    console_state.tail++;
-
-    len = console_state.tail-console_state.buf;
-
-    if (c == '\n' || len >= console_state.buflen) {
-      console_trigger(); // Go ahead and send data over
-    }
-  }
-
   // We sometimes get overruns, we'll just ignore them for now
   if (USART_ISR(CONSOLE_USART) & USART_ISR_ORE) {
     USART_ICR(CONSOLE_USART) |= USART_ICR_ORECF;

@@ -16,6 +16,8 @@ in this target.
 
 **DS11581 Revision 6: STM32F413xG/H Datasheet**
 
+AKA DocID029162 rev 6.
+
 This contains the pin mappings, memory mappings, and electrical
 characteristics for the STM32F413ZH on this devboard.
 
@@ -57,8 +59,6 @@ though, all bets are off.
 Pinout is in Table 16, pp48-51.
 
 Mechanicals are a tire fire, sorry.  Look upon p14 and weep.
-
-
 
 
 ## System Clock
@@ -123,8 +123,9 @@ Port A is used as follows:
 
 | Pin  | Subsystem | Notes                   |
 |------|-----------|-------------------------|
-| PA0  | ADC       | ADC Input               |
-| PA4  | DAC       | DAC Output              |
+| PA0  | ADC       | ADC Input  (CN10.29)    |
+| PA2  | ADC       | ADC Input  (CN10.11)    |
+| PA4  | DAC       | DAC Output (CN7.17)     |
 
 
 #### GPIOB
@@ -146,15 +147,16 @@ Port C is used as follows:
 |------|-----------|-------------------------|
 | PC13 | Buttons   | User button (Nucleo144) |
 
+
 #### GPIOD
 
 Port D is used as follows:
 
 | Pin  | Subsystem | Notes                   |
 |------|-----------|-------------------------|
+| PD5  | Console   | TX, AF7 (CN9.6)         |
 | PD8  | Console   | TX, AF7 (Nucleo144)     |
 | PD9  | Console   | RX, AF7 (Nucleo144)     |
-
 
 
 ## Clocks
@@ -181,6 +183,8 @@ Timer 3 is used for the ADC peripheral.
 DMA 1 Stream 1 is used for USART RX.
 
 DMA 1 Stream 5 is used by DAC.
+
+DMA 1 Stream 6 is used for the dump console TX.
 
 ### DMA 2
 
@@ -214,3 +218,5 @@ The DAC is clocked with Timer 2
 USART3 is used by the console.
 
 We use DMA to pull in data for RX, but TX is still blocking.
+
+USART2 is a debug console, where stuff gets dumped to.

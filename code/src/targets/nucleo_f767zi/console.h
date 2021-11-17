@@ -29,6 +29,12 @@
 
 #define CONSOLE_BAUD 115200 //!< Baud rate of the serial console
 
+
+#define CONSOLE_DUMP_PIN GPIO5 //!< A write-only console for debug messages
+#define CONSOLE_DUMP_USART USART2 //!< The USART attached to our dump pin
+#define CONSOLE_DUMP_CLOCK RCC_USART2 //!< The clock for the USART for our dump pin
+#define CONSOLE_DUMP_BAUD 1000000 //!< Baud rate of dump console, higher than default
+
 /**
  * Callback pointer for incoming serial commands
  *
@@ -49,5 +55,9 @@ typedef struct {
 
 void console_setup(console_cb, char *, uint32_t);
 void console_send_blocking(const char);
-void console_trigger(void);
+
+void console_dump(const uint8_t *, uint16_t);
+void console_dumps(const char*, ...);
+void console_dump_hex(const uint8_t *, uint16_t);
+
 /** \} */ // End doxygen group

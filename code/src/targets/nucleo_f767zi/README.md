@@ -58,7 +58,7 @@ in the development of TamoDevBoard, but I don't see things changing
 much revision to revision.  If you start changing option jumpers,
 though, all bets are off.
 
-Pinout is in Table 16, pp48-51.
+Pinout is in Table 16, pp60-64.
 
 Mechanicals are a tire fire, sorry.  Look upon p14 and weep.
 
@@ -121,8 +121,9 @@ Port A is used as follows:
 
 | Pin  | Subsystem | Notes                   |
 |------|-----------|-------------------------|
-| PA0  | ADC       | ADC Input               |
-| PA4  | DAC       | DAC Output              |
+| PA0  | ADC       | ADC Input  (CN10.29)    |
+| PA2  | ADC       | ADC Input  (CN10.11)    |
+| PA4  | DAC       | DAC Output (CN7.17)     |
 
 
 #### GPIOB
@@ -156,6 +157,7 @@ Port D is used as follows:
 
 | Pin  | Subsystem | Notes                   |
 |------|-----------|-------------------------|
+| PD5  | Console   | TX, AF7 (CN9.6)         |
 | PD8  | Console   | TX, AF7 (Nucleo144)     |
 | PD9  | Console   | RX, AF7 (Nucleo144)     |
 
@@ -187,6 +189,8 @@ Timer 4 is used for the ADC peripheral.
 DMA 1 Stream 1 is used by the USART RX path.
 
 DMA 1 Stream 5 is used by DAC.
+
+DMA 1 Stream 6 is used by the dump console for TX
 
 ### DMA 2
 
@@ -229,6 +233,9 @@ having a lot harder time than the F413 version.  This may be why.
 
 ## USART peripherals
 
+USART2 is used by the dump console
+
 USART3 is used by the console.
 
 The receive side uses DMA, while transmit is still blocking.
+
