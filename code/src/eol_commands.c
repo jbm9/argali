@@ -3,6 +3,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 
+#include "console.h"
 #include "sin_gen.h"
 #include "dtmf.h"
 #include "packet.h"
@@ -134,7 +135,7 @@ static void xmit_buf(uint8_t family, uint8_t subtype, const uint8_t *buf, uint16
   xmitbuf[0] = family;
   xmitbuf[1] = subtype;
   memcpy(xmitbuf+2, buf, buflen);
-  packet_send(xmitbuf, buflen, 'E', 'B');
+  packet_send(xmitbuf, buflen+2, 'E', 'B');
 }
 
 static void xmit_unk(uint8_t family, uint8_t subtype) {
@@ -150,7 +151,7 @@ static void eol_adc_callback(const uint8_t *buf, uint16_t buflen) {
 
   const uint16_t stride = XMITBUFLEN / 4;
 
-  for (uint8_t *c = buf; c+stride < buf+buflen; c += stride) {
+  for (const uint8_t *c = buf; c < buf+buflen; c += stride) {
     len_to_send = stride;
     if (buflen - (c-buf) < stride)
       len_to_send = buflen - (c-buf);
@@ -180,29 +181,41 @@ void eol_command_handle(uint8_t *payload, uint16_t payload_len,
 
   switch(family) {
   case 'E': //////////////////////////////////////// // Echo
-    if ('Q' != subtype) {
-      xmit_unk(family, subtype);
+    if ('Q' == subtype) { // Query
+      payload[1] = 'R';
+      packet_send(payload, payload_len, addr, control);
       return;
     }
-    payload[1] = 'R';
-    packet_send(payload, payload_len, addr, control);
+
+    if ('T' == subtype) { // full byte table request
+      // This is available to sanity check the link and its encoding.
+      eol_dac_buf[0] = 0;
+      for (uint8_t i = 1; i != 0; i++) {
+        eol_dac_buf[i] = i;
+      }
+      xmit_buf('E', 'U', eol_dac_buf, 256);
+      return;
+    }
+
+    xmit_unk(family, subtype);
     return;
 
   case 'L': //////////////////////////////////////// // Logging control
     if ('S' == subtype) {
       return;
     }
+
     xmit_unk(family, subtype);
-    break;
+    return;
 
   case 'R':  //////////////////////////////////////// // Reset
-    if ('Q' != subtype) {
-      xmit_unk(family, subtype);
-      return;
+    if ('Q' == subtype) {
+      scb_reset_system();     // This busy-loops until the device resets
+      return; // But make linters happy
     }
-    scb_reset_system();
-    // This busy-loops until the device resets
-    break; // But to make linters happy
+
+    xmit_unk(family, subtype);
+    return; // But to make linters happy
 
   case 'D': //////////////////////////////////////// // DAC
     if ('C' == subtype) {
@@ -261,19 +274,23 @@ void eol_command_handle(uint8_t *payload, uint16_t payload_len,
     } // DAC Configure
 
     if ('S' == subtype) {
+      // DAC Start:
+      // No parameters
       dac_start();
       xmit_ack(family, 's', "");
       return;
     }
 
     if ('T' == subtype) {
+      // DAC sTop:
+      // No parameters
       dac_stop();
       xmit_ack(family, 't', "");
       return;
     }
 
     xmit_unk(family, subtype);
-    break;
+    return;
 
   case 'A': //////////////////////////////////////// // ADC
     if ('C' == subtype) {
@@ -298,18 +315,26 @@ void eol_command_handle(uint8_t *payload, uint16_t payload_len,
       uint8_t sample_width =           *cursor; cursor++;
       uint8_t num_channels =           *cursor; cursor++;
 
+      uint16_t buflen = num_points * sample_width * num_channels;
+
+      if (buflen > eol_adc_buf_len) {
+        xmit_error('A', 'C', "Buffer truncation! %d bytes available, %d requested", buflen, eol_adc_buf_len);
+        return;
+      }
+
       adc_config_t adc_config = {
                                  .prescaler = prescaler,
                                  .period = period,
                                  .buf = eol_adc_buf,
-                                 .buflen = eol_adc_buf_len,
+                                 .buflen = buflen,
                                  .double_buffer = 0,
                                  .n_channels = num_channels,
                                  .sample_width = sample_width,
                                  .cb = eol_adc_callback,
       };
 
-      console_dumps("AC ps=%d pd=%d np=%d sw=%d nc=%d\n", prescaler, period, num_points, sample_width, num_channels);
+      console_dumps("AC ps=%d pd=%d np=%d sw=%d nc=%d bl=%d\n",
+                    prescaler, period, num_points, sample_width, num_channels, buflen);
 
       for (int i = 0; i < num_channels; i++) {
         adc_config.channels[i] = *cursor; cursor++;
@@ -318,11 +343,12 @@ void eol_command_handle(uint8_t *payload, uint16_t payload_len,
       adc_setup(&adc_config);
       adc_start();
     }
+    // No ACK here, the ADC data packets will cover that for us
     return;
 
   default:
     xmit_unk(family, subtype);
-    break;
+    return;
   }
 }
 

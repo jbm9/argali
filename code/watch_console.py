@@ -4,6 +4,8 @@ from enum import Enum
 import struct
 import time
 
+import sys
+
 import serial
 
 
@@ -167,17 +169,8 @@ class SerialRX:
 
         if self.state == RXState.IN_BODY:
             self.body_rem -= 1
-            if is_escape:
-                self.state = RXState.ESCAPE_FOUND
-                return
             self.accumulator.append(b)
             # fall through to escape_found case,
-
-        if self.state == RXState.ESCAPE_FOUND:
-            # We blindly pass through anything we get after an escape
-            self.accumulator.append(b)
-            self.body_rem -= 1
-            self.state = RXState.IN_BODY
 
         if self.state == RXState.IN_BODY and self.body_rem == 0:
             self.state = RXState.WAIT_CKSUM_HI
@@ -216,7 +209,14 @@ class ArgaliConsole:
         self.dump_serial_inbound = False
 
         self.pending_echo = False
+        self.pending_dac = True
+        self.pending_adc_bytes = 0
+
         self.last_echo_sent = None
+
+    def pending_input(self):
+        if self.pending_echo or self.pending_dac or (self.pending_adc_bytes > 0):
+            return True
 
     def tx(self, bs):
         #print(f'     {len(bs):4d} >> {bs}')
@@ -267,6 +267,7 @@ class ArgaliConsole:
         handlers = {
             ord('!'): self._error,
             ord('E'): self._echo_rx,
+            ord('D'): self._dac_rx,
             ord('A'): self._adc_rx,
             }
 
@@ -276,7 +277,7 @@ class ArgaliConsole:
         return handler(f)
 
     def _unknown_family(self, f):
-        print(f'Unknown payload: {f.payload[0]}/{f.payload[1]} {f.payload[3:].decode("iso8859-1")}')
+        print(f'Unknown payload: {f.payload[0]}/{f.payload[1]} {f.payload[2:].decode("iso8859-1")}')
 
     def _logline(self, f):
             print(f'                                         Logline({f.control}): {f.payload.decode("iso8859-1")}')
@@ -303,6 +304,15 @@ class ArgaliConsole:
             print(f'Got echo Response: {payload[2:]}')
             self.pending_echo = False
             self.last_echo_sent = None
+        elif qr == ord('U'):
+            print(f'Got full value table: {len(payload)}')
+
+            self.pending_echo = False
+            self.last_echo_sent = None
+
+            for i in range(2, len(payload), 16):
+                print(f'{i-2:4d}: {payload[i:i+16].hex()}')
+
 
         elif qr == ord("Q"):
             print(f'Got an echo request: {payload[2:]}, enqueuing response')
@@ -320,18 +330,28 @@ class ArgaliConsole:
         '''Request a DAC setup'''
         payload = struct.pack('>ccHLBHB', b"D",b"C", prescaler, period, scale, ppw, num_waves)
         self.enqueue(Framer.frame(payload))
+        self.pending_dac = True
 
     def dac_start_req(self):
         self.enqueue(Framer.frame(b"DS"))
+        self.pending_dac = True
 
     def dac_stop_req(self):
         self.enqueue(Framer.frame(b"DT"))
+        self.pending_dac = True
+
+    def _dac_rx(self, f):
+        print(f'Got DAC reply')
+        self.pending_dac = False
+
 
     def adc_capture_req(self, prescaler, period, num_points, sample_width, n_channels, channels):
         '''Request an ADC capture on the given channels'''
         payload = struct.pack(f'>ccHLHBB{n_channels}B', b"A",b"C", prescaler, period, num_points, sample_width, n_channels, *channels)
         print(payload)
         self.enqueue(Framer.frame(payload))
+        self.pending_adc_bytes = num_points * sample_width * n_channels
+        print(f"Submitted ADC request for {self.pending_adc_bytes} bytes")
 
     def _adc_rx(self, f):
         '''Handles inbound ADC packets'''
@@ -341,9 +361,10 @@ class ArgaliConsole:
             raise ValueError(f'Called echo rx on a packet with type "{payload[0]}" != "E": {payload}')
         qr = payload[1]
         if qr == ord("C"):
-            print(f'Got ADC Data: ')
-            for i in range(3, len(payload), 16):
-                print(f'{i-3:4d}: {payload[i:i+16].hex()}')
+            self.pending_adc_bytes -= (len(payload)-2)
+            print(f'Got ADC Data: ({self.pending_adc_bytes} after this)')
+            for i in range(2, len(payload), 16):
+                print(f'{i-2:4d}: {payload[i:i+16].hex()}')
 
     def idle(self, n):
         self.tx(b'~' * n)
@@ -351,74 +372,57 @@ class ArgaliConsole:
     def bogon(self):
         self.enqueue(Framer.frame(b'xxfoo'))
 
+
+################################################################################
+
+
+def _pend():
+    while ac.pending_input():
+        #print(".")
+        ac.poll()
+        time.sleep(0.01)
+
+def _wait(s):
+    print(f'Round-trippping: {s}')
+    ac.echo(s)
+    ac.poll()
+    while ac.pending_echo:
+        ac.poll()
+        time.sleep(0.01)
+
+
+
+######################################################################
+
 s = serial.Serial("/dev/ttyACM0", 115200, timeout=0)
 ac = ArgaliConsole(s)
 
+print('Starting up')
+
+print('Configure DAC')
+ac.dac_config_req(9,1,2,125,1)
+_pend()
+
+print('Starting DAC')
+ac.dac_start_req()
+_pend()
+
+print('Starting up ADC')
+ac.adc_capture_req(104, 49, 100, 2, 2, b'\x02\x00')
+_pend()
+
+
+print('Stopping DAC')
+ac.dac_stop_req()
+_pend()
+
+
+print('Exiting')
+sys.exit(1)
+
+############################################################
+
 n_loops = 0
-
-if 1:
-    ac.idle(12)
-    print('Starting up')
-
-    def _pend():
-        print(".")
-        for _ in range(20):
-            ac.poll()
-            time.sleep(0.01)
-
-    def _wait(s):
-        print(f'Round-trippping: {s}')
-        ac.echo(s)
-        ac.poll()
-        while ac.pending_echo:
-            ac.poll()
-            time.sleep(0.01)
-
-
-    _pend()
-    ac.bogon();
-    time.sleep(1);
-
-    ac.dac_config_req(9,1,2,125,1)
-    _pend()
-    _wait("DAC Config")
-
-    ac.dac_start_req()
-    _wait("DAC Running")
-
-
-    time.sleep(1)
-    _pend()
-    ac.adc_capture_req(104, 49, 100, 1, 2, b'\x02\x00')
-    _pend()
-    while True:
-        time.sleep(1)
-        _pend()
-
-    _pend()
-    _wait("Testing connection")
-
-#    ac.reset_req()
- #   time.sleep(5)
-  #  _pend()
-   # _wait("Reset finished")
-
-
-    ac.dac_config_req(9,1,2,125,1)
-    _pend()
-    _wait("DAC Config")
-
-    ac.dac_start_req()
-    _wait("DAC Running")
-
-    ac.adc_capture_req(104, 49, 100, 1, 1, [0])
-    _wait("ADC running")
-
-    time.sleep(3)
-    ac.dac_stop_req()
-    _wait("DAC STOP")
-
-
 while True:
     ac.poll()
     n_loops += 1

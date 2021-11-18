@@ -79,6 +79,20 @@ static uint8_t modem_state;
 
 static uint32_t console_callbacks_count;
 
+static  adc_config_t adc_config = {
+                                   .prescaler = ADC_PRESCALER_8KHZ,
+                                   .period = ADC_PERIOD_8KHZ,
+                                   .buf = adc_buf,
+                                   .buflen = ADC_NUM_SAMPLES,
+                                   .double_buffer = 1,
+                                   .n_channels = 1,
+                                   .channels = {0},
+                                   .double_buffer = 1,
+                                   .sample_width = 1,
+                                   .cb = dtmf_process,
+};
+
+
 ////////////////////////////////////////////////////////////
 // Misc functions
 
@@ -181,6 +195,7 @@ static void tone_start_next_digit(void) {
   // Reinitialize DAC DMA buffer, in case it's been reset by the EOL code
   dac_waveform_setup();
   dac_start();
+  adc_setup(&adc_config);
   adc_start();
 }
 
@@ -323,19 +338,6 @@ int main(void) {
 
   console_callbacks_count = 0;
 
-  adc_config_t adc_config = {
-                             .prescaler = ADC_PRESCALER_8KHZ,
-                             .period = ADC_PERIOD_8KHZ,
-                             .buf = adc_buf,
-                             .buflen = ADC_NUM_SAMPLES,
-                             .double_buffer = 1,
-                             .n_channels = 1,
-                             .channels = {0},
-                             .double_buffer = 1,
-                             .sample_width = 1,
-                             .cb = dtmf_process,
-  };
-
   // Only variables declaration/definitions above this line
   //////////////////////////////////////////////////
   // Critical init section /////////////////////////
@@ -345,7 +347,6 @@ int main(void) {
 
   // LEDs before anything else, so we can use them anywhere.
   led_setup();
-  led_green_on();
 
   memset(console_rx_buffer, 0, 1024);
   console_setup(&console_line_handler, console_rx_buffer, 8);

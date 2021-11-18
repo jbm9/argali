@@ -44,6 +44,24 @@ typedef void (*adc_buffer_cb)(const uint8_t *, uint16_t); //!< An ADC DMA callba
  * reasonably efficiently.
  *
  * See the codepaths that call adc_setup() to get examples of its use.
+ *
+ * A note on buflen: in this structure, it's the size of your buffer
+ * in bytes.  It's just how much memory is available.  The layers
+ * below this call will use the number of channels and the sample
+ * width to determine how many points fit within it, and submit the
+ * DMA requests appropriately.
+ *
+ * If you are using double-buffering, the above goes twice for you:
+ * the final DMA call will split your buffer in half, and use one half
+ * for each of the two buffers.
+ *
+ * So, to sort out how much RAM you need, just do:
+ *
+ * n_pts_desired * sample_width * n_channels * (double_buffered?2:1)
+ *
+ * It is unclear if double-buffering wants a word alignment for the
+ * split; it seems like the architecture takes care of these problems
+ * for us.
  */
 typedef struct adc_config {
   // Timer settings
