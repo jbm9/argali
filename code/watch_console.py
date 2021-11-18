@@ -259,20 +259,30 @@ class ArgaliConsole:
     def frame_cb(self, f):
         self.last_bytes = []
 
-        if f.address == ord('L'):
-            print(f'                                         Logline({f.control}): {f.payload.decode("iso8859-1")}')
-            return
-
         #print(f'     Got frame: {f.address}/{f.control}: {f.payload[0]}')
 
-        if f.payload[0] == ord('!'):
+        if f.address == ord('L'):
+            return self._logline(f)
+
+        handlers = {
+            ord('!'): self._error,
+            ord('E'): self._echo_rx,
+            ord('A'): self._adc_rx,
+            }
+
+        family = f.payload[0]
+
+        handler = handlers.get(family, self._unknown_family)
+        return handler(f)
+
+    def _unknown_family(self, f):
+        print(f'Unknown payload: {f.payload[0]}/{f.payload[1]} {f.payload[3:].decode("iso8859-1")}')
+
+    def _logline(self, f):
+            print(f'                                         Logline({f.control}): {f.payload.decode("iso8859-1")}')
+
+    def _error(self, f):
             print(f'Got an error packet: {f.payload.decode("iso8859-1")}')
-            return
-
-        if f.payload[0] == ord('E'):
-            print(f'Handling echo')
-            self._echo_rx(f.payload)
-
 
     def echo(self, s, rq="Q"):
         '''Request the remote side echo back a blob of data'''
@@ -281,10 +291,11 @@ class ArgaliConsole:
         self.pending_echo = True
         self.last_echo_sent = time.time()
 
-    def _echo_rx(self, payload):
+    def _echo_rx(self, f):
         '''Handles inbound echo packets'''
 
-        print(f'Got an echo packet inbound: {payload[0]}/{payload[1]}')
+        payload = f.payload
+        #print(f'Got an echo packet inbound: {payload[0]}/{payload[1]}')
         if payload[0] != ord('E'):
             raise ValueError(f'Called echo rx on a packet with type "{payload[0]}" != "E": {payload}')
         qr = payload[1]
@@ -296,8 +307,9 @@ class ArgaliConsole:
         elif qr == ord("Q"):
             print(f'Got an echo request: {payload[2:]}, enqueuing response')
             self.echo(payload[2:], "R")
+        else:
+            return self._unknown_family(f)
 
-            
     def reset_req(self):
         '''Request the remote target to reset itself'''
         payload = b'RQ'
@@ -314,6 +326,24 @@ class ArgaliConsole:
 
     def dac_stop_req(self):
         self.enqueue(Framer.frame(b"DT"))
+
+    def adc_capture_req(self, prescaler, period, num_points, sample_width, n_channels, channels):
+        '''Request an ADC capture on the given channels'''
+        payload = struct.pack(f'>ccHLHBB{n_channels}B', b"A",b"C", prescaler, period, num_points, sample_width, n_channels, *channels)
+        print(payload)
+        self.enqueue(Framer.frame(payload))
+
+    def _adc_rx(self, f):
+        '''Handles inbound ADC packets'''
+
+        payload = f.payload
+        if payload[0] != ord('A'):
+            raise ValueError(f'Called echo rx on a packet with type "{payload[0]}" != "E": {payload}')
+        qr = payload[1]
+        if qr == ord("C"):
+            print(f'Got ADC Data: ')
+            for i in range(3, len(payload), 16):
+                print(f'{i-3:4d}: {payload[i:i+16].hex()}')
 
     def idle(self, n):
         self.tx(b'~' * n)
@@ -347,6 +377,24 @@ if 1:
 
     _pend()
     ac.bogon();
+    time.sleep(1);
+
+    ac.dac_config_req(9,1,2,125,1)
+    _pend()
+    _wait("DAC Config")
+
+    ac.dac_start_req()
+    _wait("DAC Running")
+
+
+    time.sleep(1)
+    _pend()
+    ac.adc_capture_req(104, 49, 100, 1, 2, b'\x02\x00')
+    _pend()
+    while True:
+        time.sleep(1)
+        _pend()
+
     _pend()
     _wait("Testing connection")
 
@@ -357,11 +405,14 @@ if 1:
 
 
     ac.dac_config_req(9,1,2,125,1)
-    _pend()    
+    _pend()
     _wait("DAC Config")
 
     ac.dac_start_req()
     _wait("DAC Running")
+
+    ac.adc_capture_req(104, 49, 100, 1, 1, [0])
+    _wait("ADC running")
 
     time.sleep(3)
     ac.dac_stop_req()

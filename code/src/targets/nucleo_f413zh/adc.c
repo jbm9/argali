@@ -3,6 +3,8 @@
  * \brief Nucleo F413ZH ADC interface implementation
  */
 
+#include <string.h>
+
 
 /**
  * \defgroup nucleo_f413zh_adc ADC driver (Nucleo F413ZH)
@@ -13,17 +15,33 @@
  *
  * This is a DMA-driven ADC input driver.
  *
- * Resources needed for the F413ZH's DMA ADC:
+ * It is used for both the Application code and the EOL test jig code.
  *
- * * DMA channel
- * * ADC channel(s)
- * * Clock channels
- * * GPIO AF assignment
+ * The general usage pattern is
+ * - create a callback function to get full buffers
+ * - fill in an adc_config_t struct
+ * - call adc_setup(&adc_config)
+ * - call adc_start() to start the processing
+ * - call adc_stop() when you want to stop processing
  *
- * Relevant documentation: RM0430 Rev 8 p341: 13.3.8 Scan mode
- * explains how continuous multi-channel scans work, and how they feed
- * into DMA.  This seems to be the way to get DMA working for ADC
- * inputs.
+ * Note that old buffers may still be in-flight when you call
+ * adc_stop(), so you may catch another callback at that point.  It
+ * would be relatively straightforward to have the stop call take a
+ * parameter to remove the callback, but that makes subsequent use a
+ * lot hairier and more error-prone.
+ *
+ * See README.md for a rundown of the resources used here.
+ *
+ * \todo Understand why we get so many ADC1 overrun interrupts.  They
+ * happen pretty much as soon as we turn it on, so something must be
+ * misconfigured.g
+ *
+ *
+ * A poorly-formatted braindump of relevant documentation follows:
+ *
+ * RM0430 Rev 8 p341: 13.3.8 Scan mode explains how continuous
+ * multi-channel scans work, and how they feed into DMA.  This seems
+ * to be the way to get DMA working for ADC inputs.
  *
  * * Set channels in the ADC_SQRx registers (including count in SQR1)
  * * Set the SCAN bit in ADC_CR1
@@ -82,7 +100,7 @@
 //////////////////////////////////////////////////////////////////////
 // State variables
 
-static adc_dma_buffer_t dma_buffer; //!< The buffer that was given to us
+static adc_config_t saved_adc_config;
 
 //////////////////////////////////////////////////////////////////////
 // Implementation code
@@ -112,19 +130,22 @@ static void adc_setup_gpio(void) {
 
 /**
  * \brief Configures the ADC peripheral for capture
- * */
-static void adc_setup_adc(uint8_t *channels, uint8_t n_channels) {
+ *
+ */
+static void adc_setup_adc(adc_config_t *adc_config) {
   nvic_enable_irq(NVIC_ADC_IRQ);
 
   adc_power_off(ADC1); // Turn off ADC to configure sampling
 
-  adc_set_resolution(ADC1, ADC_RESOLUTION_CR1);
-  adc_set_sample_time_on_all_channels(ADC1, ADC_SMPR_SMP_112CYC);
-  adc_set_dma_continue(ADC1);
-  adc_set_regular_sequence(ADC1, n_channels, channels);
-  adc_enable_dma(ADC1);
-  adc_enable_overrun_interrupt(ADC1);
+  uint32_t resolution = (adc_config->sample_width == 1 ?
+                         ADC_CR1_RES_8BIT : ADC_CR1_RES_12BIT);
 
+  adc_set_resolution(ADC1, resolution);
+  adc_set_sample_time_on_all_channels(ADC1, ADC_SMPR_SMP_112CYC);
+  if (adc_config->double_buffer)
+    adc_set_dma_continue(ADC1);
+
+  adc_set_regular_sequence(ADC1, adc_config->n_channels, adc_config->channels);
   adc_power_on(ADC1);  // Re-power ADC peripheral
 }
 
@@ -138,10 +159,13 @@ static void adc_setup_adc(uint8_t *channels, uint8_t n_channels) {
  * This does a full reset of the peripheral, then follows the flow
  * found in RM0430r8 p232, 9.3.18 "Stream configuration procedure"
  */
-static void adc_setup_dma(uint8_t *buf, const uint32_t buflen) {
-  // Before we begin, let's save this state for restarts
-  dma_buffer.buf = buf;
-  dma_buffer.buflen = buflen;
+static void adc_setup_dma(adc_config_t *adc_config) {
+  uint16_t n_pts = adc_config->buflen / adc_config->sample_width / adc_config->n_channels;
+  uint32_t psize = (adc_config->sample_width == 1 ? DMA_SxCR_PSIZE_8BIT : DMA_SxCR_PSIZE_16BIT);
+  uint32_t msize = (adc_config->sample_width == 1 ? DMA_SxCR_MSIZE_8BIT : DMA_SxCR_MSIZE_16BIT);
+
+  uint8_t *buf = adc_config->buf;
+  uint16_t buflen = adc_config->buflen;
 
   dma_settings_t settings = {
                              .dma = DMA2,
@@ -151,13 +175,13 @@ static void adc_setup_dma(uint8_t *buf, const uint32_t buflen) {
 
                              .direction = DMA_SxCR_DIR_PERIPHERAL_TO_MEM,
                              .paddr = (uint32_t)&ADC_DR(ADC1),
-                             .peripheral_size = DMA_SxCR_PSIZE_8BIT,
-                             .buf = (uint32_t) buf,
-                             .buflen = buflen,
-                             .mem_size = DMA_SxCR_MSIZE_8BIT,
+                             .peripheral_size = psize,
+                             .buf = (uint32_t) adc_config->buf,
+                             .buflen = n_pts,
+                             .mem_size = msize,
 
-                             .circular_mode = 1,
-                             .double_buffer = 1,
+                             .circular_mode = adc_config->double_buffer,
+                             .double_buffer = adc_config->double_buffer,
 
                              .transfer_complete_interrupt = 1,
                              .enable_irq = 1,
@@ -210,7 +234,8 @@ uint32_t adc_stop(void) {
  */
 void adc_start(void) {
   rcc_periph_clock_enable(RCC_ADC1);
-  adc_setup_dma(dma_buffer.buf, dma_buffer.buflen);
+  adc_enable_scan_mode(ADC1);
+  adc_setup_dma(&saved_adc_config);
   dma_enable_stream(DMA2, DMA_STREAM0);
   adc_start_conversion_regular(ADC1);
 }
@@ -234,29 +259,28 @@ void adc_start(void) {
  *
  * \returns The actual sampling rate that was obtained
  */
-float adc_setup(uint16_t prescaler, uint32_t period, uint8_t *buff, uint32_t buflen) {
-  uint8_t channels[1] = {0};
-  const uint8_t n_channels = 1;
+float adc_setup(adc_config_t *adc_config) {
+
+  memcpy(&saved_adc_config, adc_config, sizeof(adc_config_t));
 
   adc_setup_clocks();
   adc_setup_gpio();
 
-  timer_setup_adcdac(TIM3, prescaler, period);
+  timer_setup_adcdac(TIM3, adc_config->prescaler, adc_config->period);
 
-  adc_setup_adc(channels, n_channels);
+  adc_setup_adc(adc_config);
+
+
+  adc_setup_dma(adc_config);
+
+  adc_enable_dma(ADC1);
+  adc_enable_overrun_interrupt(ADC1);
 
   adc_enable_external_trigger_regular(ADC1,
                                       ADC_CR2_EXTSEL_TIM3_TRGO,
                                       ADC_CR2_EXTEN_RISING_EDGE);
 
-  adc_setup_dma(buff, buflen);
-
-  // And now we can kick off the ADC conversion
-  adc_start_conversion_regular(ADC1);
-
-  //  return sample_rate;
-
-  return adc_get_sample_rate(prescaler, period);
+  return adc_get_sample_rate(adc_config->prescaler, adc_config->period);
 }
 
 
@@ -287,13 +311,17 @@ void dma2_stream0_isr(void) {
   if((DMA2_LISR & DMA_LISR_TCIF0) != 0) {
     // Clear this flag so we can continue
     dma_clear_interrupt_flags(DMA2, DMA_STREAM0, DMA_LISR_TCIF0);
+    uint8_t *bufpos = saved_adc_config.buf;
+    uint16_t buflen = saved_adc_config.buflen;
 
-    uint8_t *bufpos = dma_buffer.buf;
-    if (dma_get_target(DMA2, DMA_STREAM0)) {
-      bufpos += dma_buffer.buflen/2;
-    }
+    //    if (DMA_SCR(DMA2, DMA_STREAM0) & DMA_SxCR_DBM) {
+      buflen /= 2;
+      if (dma_get_target(DMA2, DMA_STREAM0)) {
+        bufpos += buflen;
+      }
+      //    }
 
-    dtmf_process(bufpos, dma_buffer.buflen/2);
+    if (saved_adc_config.cb) saved_adc_config.cb(bufpos, buflen);
   }
 }
 
@@ -316,5 +344,8 @@ void dma2_stream0_isr(void) {
 void adc_isr(void) {
   if (adc_get_overrun_flag(ADC1)) {
     adc_clear_overrun_flag(ADC1);
+    if (saved_adc_config.double_buffer) {
+      adc_start_conversion_regular(ADC1);
+    }
   }
 }

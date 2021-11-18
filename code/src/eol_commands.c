@@ -38,17 +38,17 @@
  *
  * Commands to support:
  *
- * - Echo
+ * - x Echo
  *
- * - Reset device 
+ * - x Reset device
  *
  * - Disable logline output for anything but errors or forced
  *
- * - DAC setup: prescaler, period, amplitude, number of sine points, number of waves
+ * - x DAC setup: prescaler, period, amplitude, number of sine points, number of waves
  *
- * - DAC start: begin the DAC DMA output
+ * - x DAC start: begin the DAC DMA output
  *
- * - DAC stop: turn off the DAC
+ * - x DAC stop: turn off the DAC
  *
  * - ADC Setup: prescaler, period, channels, buffer length
  *
@@ -66,6 +66,22 @@
  * We'll just unpack things pretty directly here
  */
 
+////////////////////////////////////////////////////////////
+// State variables
+
+static uint8_t eol_dac_buf[1024];
+
+static const uint16_t eol_adc_buf_len = 2048;
+static uint8_t eol_adc_buf[2048];
+
+
+#define XMITBUFLEN 1024
+static uint8_t xmitbuf[XMITBUFLEN];
+
+
+////////////////////////////////////////////////////////////
+// Utility functions
+
 static uint32_t get32(uint8_t *c) {
   return (*c<<24)+(*(c+1)<<16)+(*(c+2)<<8)+(*(c+3));
 
@@ -76,15 +92,13 @@ static uint16_t get16(uint8_t *c) {
 
 }
 
-#define XMITBUFLEN 256
-static uint8_t xmitbuf[XMITBUFLEN];
 
 static void xmit_ack(uint8_t family, uint8_t subtype, char *fmt, ...) {
   uint16_t buflen;
-  
+
   // We'll vsnprintf() into our buffer a bit, then slip the constants
   // in by hand later on.
-  
+
   va_list argp;
   va_start(argp, fmt);
   buflen = vsnprintf((char*)xmitbuf+2, XMITBUFLEN-2, fmt, argp);
@@ -93,7 +107,7 @@ static void xmit_ack(uint8_t family, uint8_t subtype, char *fmt, ...) {
   // And stash in our payload header
   xmitbuf[0] = family;
   xmitbuf[1] = subtype;
-  
+
   packet_send(xmitbuf, buflen+3, 'E', '!');
 }
 
@@ -102,7 +116,7 @@ static void xmit_error(uint8_t family, uint8_t subtype, char *fmt, ...) {
 
   // We'll vsnprintf() into our buffer a bit, then slip the constants
   // in by hand later on.
-  
+
   va_list argp;
   va_start(argp, fmt);
   buflen = vsnprintf((char*)xmitbuf+3, XMITBUFLEN-3, "%s", argp);
@@ -112,15 +126,38 @@ static void xmit_error(uint8_t family, uint8_t subtype, char *fmt, ...) {
   xmitbuf[0] = '!';
   xmitbuf[1] = family;
   xmitbuf[2] = subtype;
-  
+
   packet_send(xmitbuf, buflen+3, 'E', '!');
+}
+
+static void xmit_buf(uint8_t family, uint8_t subtype, const uint8_t *buf, uint16_t buflen) {
+  xmitbuf[0] = family;
+  xmitbuf[1] = subtype;
+  memcpy(xmitbuf+2, buf, buflen);
+  packet_send(xmitbuf, buflen, 'E', 'B');
 }
 
 static void xmit_unk(uint8_t family, uint8_t subtype) {
   xmit_error(family, subtype, "Unknown family/subtype");
 }
 
-static uint8_t eol_dac_buf[1024];
+////////////////////////////////////////////////////////////////////////////////
+// Callbacks
+
+static void eol_adc_callback(const uint8_t *buf, uint16_t buflen) {
+  uint16_t len_to_send;
+  adc_stop();
+
+  const uint16_t stride = XMITBUFLEN / 4;
+
+  for (uint8_t *c = buf; c+stride < buf+buflen; c += stride) {
+    len_to_send = stride;
+    if (buflen - (c-buf) < stride)
+      len_to_send = buflen - (c-buf);
+    xmit_buf('A', 'C', c, len_to_send);
+
+  }
+}
 
 
 ////////////////////////////////////////////////////////////
@@ -187,7 +224,7 @@ void eol_command_handle(uint8_t *payload, uint16_t payload_len,
       uint16_t npts = points_per_wave * num_waves;
 
       console_dumps("DC %d %d %d %d %d", prescaler, period, scale, points_per_wave, num_waves);
-      
+
       //////////////////////////////////////////////////
       // Fill our sine buffer
       //
@@ -238,11 +275,54 @@ void eol_command_handle(uint8_t *payload, uint16_t payload_len,
     xmit_unk(family, subtype);
     break;
 
+  case 'A': //////////////////////////////////////// // ADC
+    if ('C' == subtype) {
+      // ADC Capture
+      // uint16_t prescaler: as in dac_setup()
+      // uint32_t period: as in dac_setup()
+      // uint16_t num_points: Number of samples to capture
+      // uint8_t sample_width: 1 for 8b, 2 for 16b samples
+      // uint8_t num_channels: number of channels to capture
+      // uint8_t[] channels: list of channels to capture
+      //
+      // Note that this returns num_channels*num_points samples,
+      // interleaved just as the ADC DMA gives it to us.  These are
+      // all sample_width bytes wide, for the final size of your buffer.
+      //
+      // Also, note that we don't autoconfigure the channels as inputs
+      // here.  You actually only have access to 0 and 1 in the
+      // default state.d
+      uint16_t prescaler =       get16(cursor); cursor += 2;
+      uint32_t period =          get32(cursor); cursor += 4;
+      uint16_t num_points =      get16(cursor); cursor += 2;
+      uint8_t sample_width =           *cursor; cursor++;
+      uint8_t num_channels =           *cursor; cursor++;
+
+      adc_config_t adc_config = {
+                                 .prescaler = prescaler,
+                                 .period = period,
+                                 .buf = eol_adc_buf,
+                                 .buflen = eol_adc_buf_len,
+                                 .double_buffer = 0,
+                                 .n_channels = num_channels,
+                                 .sample_width = sample_width,
+                                 .cb = eol_adc_callback,
+      };
+
+      console_dumps("AC ps=%d pd=%d np=%d sw=%d nc=%d\n", prescaler, period, num_points, sample_width, num_channels);
+
+      for (int i = 0; i < num_channels; i++) {
+        adc_config.channels[i] = *cursor; cursor++;
+      }
+
+      adc_setup(&adc_config);
+      adc_start();
+    }
+    return;
+
   default:
     xmit_unk(family, subtype);
     break;
-    
-    
   }
 }
 

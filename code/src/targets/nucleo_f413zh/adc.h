@@ -31,38 +31,41 @@
  */
 #define ADC_MAX_SAMPLE_RATE 2400000
 
+
+typedef void (*adc_buffer_cb)(const uint8_t *, uint16_t); //!< An ADC DMA callback
+
 /**
- * \brief A trivia encapsulation of a memory buffer for DMA access.
+ * An ADC Configuration
  *
+ * This is used to bring up the ADC in both the main application mode
+ * and EOL mode.
+ *
+ * It can be used to do most non-injected ADC tasks in the background
+ * reasonably efficiently.
+ *
+ * See the codepaths that call adc_setup() to get examples of its use.
  */
-typedef struct adc_dma_buffer {
+typedef struct adc_config {
+  // Timer settings
+  uint16_t prescaler; //!< The prescaler to use for the timer, see timer_setup_adcdac()
+  uint32_t period; //!< The period to use for the timer
+
   uint8_t *buf;  //!< A pointer to the buffer to fill
-  uint16_t buflen; //!< The length of the buffer
-} adc_dma_buffer_t;
+  uint16_t buflen; //!< The length of the buffer, in bytes
+  uint8_t double_buffer; //!< Flag to enable/disable double-buffering
 
-/**
- * This bundles up the ADC clock settings so we can populate them
- * automatically.
- *
- * Note that these appear to be random integers, but map to prescaler
- * and sample time settings per the datasheet (or libopencm3 macros).
- */
-typedef struct adc_freq_config {
-  uint32_t prescaler; //!< The prescaler to use, one of ADC_CCR_ADCPRE_BY2 etc
-  uint8_t sample_time; //!< The sample time to use, one of ADC_SMPR_SMP_3CYC etc
-} adc_freq_config_t;
+  uint8_t n_channels; //!< The number of channels to sample
+  uint8_t channels[16]; //!< The order in which to sample the channels
+  uint8_t sample_width; //!< 1 for 8b samples, 2 for 12b samples
 
-float adc_setup(uint16_t, uint32_t, uint8_t *,uint32_t);
+  adc_buffer_cb cb; //!< Callback to call when buffers get filled
+} adc_config_t;
+
+float adc_setup(adc_config_t *);
 uint32_t adc_stop(void);
 void adc_start(void);
 
 float adc_get_sample_rate(uint16_t, uint32_t);
-
-
-// Internal, but use at your own risk
-void adc_apply_freq_config(adc_freq_config_t *);
-#define ADC_RESOLUTION_NBITS 8 //!< How many bits of resolution we're using
-#define ADC_RESOLUTION_CR1 ADC_CR1_RES_8BIT //!< What the STM32 wants to see for our resolution
 
 
 #define ADC_PRESCALER_8KHZ 104 //!< The prescaler needed to get 8kHz

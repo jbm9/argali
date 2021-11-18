@@ -323,6 +323,19 @@ int main(void) {
 
   console_callbacks_count = 0;
 
+  adc_config_t adc_config = {
+                             .prescaler = ADC_PRESCALER_8KHZ,
+                             .period = ADC_PERIOD_8KHZ,
+                             .buf = adc_buf,
+                             .buflen = ADC_NUM_SAMPLES,
+                             .double_buffer = 1,
+                             .n_channels = 1,
+                             .channels = {0},
+                             .double_buffer = 1,
+                             .sample_width = 1,
+                             .cb = dtmf_process,
+  };
+
   // Only variables declaration/definitions above this line
   //////////////////////////////////////////////////
   // Critical init section /////////////////////////
@@ -354,8 +367,7 @@ int main(void) {
   dac_waveform_setup();
 
   // ADC
-  adc_sample_rate = adc_setup(ADC_PRESCALER_8KHZ, ADC_PERIOD_8KHZ,
-                              adc_buf, ADC_NUM_SAMPLES);
+  adc_sample_rate = adc_setup(&adc_config);
   logline(LEVEL_INFO, "Configured ADC at %d samples per second",
 	  (uint32_t)adc_sample_rate);
 

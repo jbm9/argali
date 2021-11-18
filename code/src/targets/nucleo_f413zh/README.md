@@ -205,6 +205,19 @@ about the sampling rate formulas needed.
 
 We clock this with Timer 3.
 
+Input pins are:
+* input 0: PA0, CN10.29 on the Nucleo144
+* input 2: PA2, CN10.11 on the Nucleo144
+
+You may wish to add more of these to allow yourself more analog
+channels for either your application or your EOL testing.  With two in
+there, you should be well-equipped to add more.
+
+For more information on which pins go to what ADC input ports, see the
+giant pin definition table in the datasheet (aka DocID029162) Rev6,
+pp50-64.  You will find these in the "Additional functions" column, as
+`ADC1_INx`.
+
 ## DAC peripherals
 
 DAC 1 Channel 1 is used by the DAC subsystem to output data via DMA.
