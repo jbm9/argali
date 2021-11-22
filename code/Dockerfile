@@ -158,3 +158,6 @@ RUN chmod u+s /usr/local/bin/openocd
 # Add some needed latex packages for Doxygen to assemble docs
 RUN apt-get update
 RUN apt-get install -y texlive-latex-extra
+
+# Make the annoying "unknown group" message go away.
+RUN addgroup --gid 1000 argali
