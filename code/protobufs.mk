@@ -14,7 +14,7 @@ CFLAGS += "-I$(NANOPB_DIR)"
 CFILES += $(NANOPB_CORE)
 
 # Makefile voodoo to automatically include all .proto files
-PBCFILES = $(patsubst %.proto,%.pb.c,$(wildcard src/packets/logline.proto))
+PBCFILES = $(patsubst %.proto,%.pb.c,$(wildcard src/packets/*.proto))
 CFILES += $(PBCFILES)
 #$(info PROTOS $(wildcard src/packets/*.proto) // $(PBCFILES))
 # We implicitly assume the .h files are made for us, which is dirty but works

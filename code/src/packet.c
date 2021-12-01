@@ -1,5 +1,8 @@
 #include "packet.h"
 
+#include <pb_encode.h>
+#include "packets/argali_packet.pb.h"
+
 #ifndef TEST_UNITY
 #include "console.h"
 #endif
@@ -66,13 +69,76 @@
 
 
 #ifndef TEST_UNITY
+
+static bool write_callback(pb_ostream_t *stream, const uint8_t *buf, size_t count) {
+  uint16_t to_send;
+  int i;
+
+  packet_buffer_t *pbt = (packet_buffer_t*)stream->state;
+
+  console_dumps("wb(%d)\n", count);
+  
+  to_send = packet_frame(pbt->buf, buf, count, 0, 0);
+
+  for (i = 0; i < 4; i++) {
+    console_send_blocking('~');
+  }
+
+  for (i = 0; i < to_send; i++) {
+    console_send_blocking(pbt->buf[i]);
+  }
+  for (i = 0; i < 4; i++) {
+    console_send_blocking('~');
+  }
+  return true;
+}
+
+static bool write_buf(pb_ostream_t *stream, const pb_field_t *field, void* const *arg) {
+  packet_buffer_t *pbt = (packet_buffer_t*)*arg;
+  return pb_encode_tag_for_field(stream, field) &&
+    pb_encode_string(stream, pbt->buf, pbt->buflen);
+}
+
 /**
  * \brief Sends a single packet out over serial
  */
 void packet_send(const uint8_t *buf, uint16_t buflen, uint8_t address, uint8_t command) {
   uint8_t pktbuf[1024];
   uint16_t pktlen;
-  pktlen = packet_frame(pktbuf, (uint8_t*)buf, buflen, address, command);
+
+  uint8_t pb_buf[1024];
+  uint16_t pb_len;
+  packet_buffer_t pbt = { .buf = pktbuf, .buflen = 1024 };
+
+  pb_ostream_t output_stream = pb_ostream_from_buffer(pb_buf, 1024);
+
+  packet_buffer_t payload_pbt = { .buf = buf, .buflen = buflen };
+  argali_packet pkt = argali_packet_init_zero;
+
+  pkt.which_msg = argali_packet_logline_tag;
+  pkt.msg.logline.content.funcs.encode = write_buf;
+  pkt.msg.logline.content.arg = &payload_pbt;
+  
+  // Pack buffer into the format, then enframe with packet_frame
+  switch(address) {
+  case 'L':
+
+    if (pb_encode(&output_stream, argali_packet_fields, &pkt)) {
+      pb_len = output_stream.bytes_written;
+      
+      buf = pb_buf;
+      buflen = pb_len;
+    } else {
+      console_dumps("pb_encode error: %s", PB_GET_ERROR(&output_stream));
+      return;
+    }
+    break;
+  default:
+    break;
+  }
+
+
+  pktlen = packet_frame(pktbuf, (uint8_t*)buf, buflen, address, command);  
 
   int i;
   for (i = 0; i < 4; i++) {
