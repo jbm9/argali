@@ -27,7 +27,7 @@ ARGALIVARS=TARGET=$(TARGET) OOCD_FILE=$(OOCD_FILE) OOCD_INTERFACE=$(OOCD_INTERFA
 .PHONY: docker-image-latest docker-image
 .PHONY: docker-build docker-flash
 .PHONY: docker-test
-.PHONY: docker-openocd-daemon docker-gdbgui
+.PHONY: openocd-daemon docker-openocd-daemon docker-gdbgui
 .PHONY: docker-doxygen
 
 .argali_setup: docker-image
@@ -56,6 +56,9 @@ docker-flash:
 docker-test:
 # NB: This one doesn't use ARGALIVARS, since those are for building firmware
 	$(DOCKER_RUN) make -f unity_tests.mk test-unity
+
+openocd-daemon:
+	$(OOCD) -f $(OOCD_FILE)
 
 docker-openocd-daemon:
 	$(DOCKER_RUN_BASE) --net=host -p 127.0.0.1:$(OOCD_PORT):$(OOCD_PORT) -p 127.0.0.1:3333:3333 -it $(DOCKER_IMAGE) make openocd-daemon $(ARGALIVARS)

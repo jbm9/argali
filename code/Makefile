@@ -2,7 +2,7 @@
 PROJECT_NAME = schmancy_blink
 
 # Default target unless one is given.
-TARGET ?= nucleo_f767zi
+TARGET ?= nucleo_f413zh
 # Note that TDIR is *relative* to SHARED_DIR
 TDIR = src/targets/$(TARGET)/
 
@@ -27,6 +27,14 @@ ARGALI_VERSION = $(shell ./argali_version.sh)
 PROJECT = $(BUILD_DIR)/$(PROJECT_NAME)
 
 SHARED_DIR = src/
+
+
+# Include the base nanopb makefile
+include external/nanopb/extra/nanopb.mk
+
+# And our local protobuf setup
+include protobufs.mk
+
 
 # Anything that is hardware-specific should be defined in a Makefile
 # snippet for that hardware.  This includes appending things to CFILES
@@ -54,9 +62,6 @@ LDLIBS += -lm
 include $(OPENCM3_DIR)/mk/genlink-config.mk
 include libopencm3_rules.mk
 include $(OPENCM3_DIR)/mk/genlink-rules.mk
-
-openocd-daemon:
-	$(OOCD) -f $(OOCD_FILE)
 
 
 include host_side.mk

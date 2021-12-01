@@ -159,5 +159,13 @@ RUN chmod u+s /usr/local/bin/openocd
 RUN apt-get update
 RUN apt-get install -y texlive-latex-extra
 
+RUN pip install nanopb
 # Make the annoying "unknown group" message go away.
 RUN addgroup --gid 1000 argali
+
+RUN apt-get install -y protobuf-compiler
+
+RUN pip install pyserial
+
+RUN pip install coverage
+# TODO Make these both just use the requirements.txt

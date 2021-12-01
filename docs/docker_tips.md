@@ -74,3 +74,8 @@ Note that this shell is running with `--privileged` but with your
 userid.  This should make it reasonably safe, but it does have access
 to devices on your machine.  Treat it more or less like you would a
 shell on your local machine.
+
+Also, we do a bit of juggling to get a usable `.bash_history` into
+this shell.  You should be able to get command history across
+invocations of the docker shell this way, which is surprisingly
+helpful.
