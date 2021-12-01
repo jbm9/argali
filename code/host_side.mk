@@ -29,6 +29,7 @@ ARGALIVARS=TARGET=$(TARGET) OOCD_FILE=$(OOCD_FILE) OOCD_INTERFACE=$(OOCD_INTERFA
 .PHONY: docker-test
 .PHONY: openocd-daemon docker-openocd-daemon docker-gdbgui
 .PHONY: docker-doxygen
+.PHONY: python-protobufs python-unittests
 
 .argali_setup: docker-image
 	git submodule init
@@ -70,3 +71,9 @@ docker-gdbgui:
 
 docker-doxygen:
 	$(DOCKER_RUN) ./build_doxygen.sh
+
+python-protobufs:
+	$(DOCKER_RUN) ./argali_tether/build_protobufs.sh
+
+python-unittests:
+	$(DOCKER_RUN) ./argali_tether/run_unittests.sh

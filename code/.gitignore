@@ -1,3 +1,9 @@
+# Ignore tmp files
+.~*
+\#*
+*~
+
+
 # Don't commit goofball "lockfiles" (used to show local setup is complete)
 .argali_setup
 
@@ -22,6 +28,17 @@ generated.*.ld
 
 # Ignore ipython caches
 .ipynb_checkpoints/
+*.pyc
+
+# Coverage artifacts
+.coverage
+htmlcov
 
 # Also forget about emacs TAGS
 TAGS
+
+
+# Ignore all protobuf output
+argali_tether/packets/*pb2.py
+src/packets/*.pb.c
+src/packets/*.pb.h
