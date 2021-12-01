@@ -20,9 +20,6 @@ class Frame:
         self.control = control
         self.payload = payload
 
-    def frame(self):
-        pass
-
 
 class Framer:
     '''Implements the serial level line framing'''

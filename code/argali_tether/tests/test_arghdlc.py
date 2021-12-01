@@ -2,7 +2,7 @@
 
 import unittest
 
-from context import arghdlc
+from context import arghdlc, argali_packet_pb2
 
 class TestFramer(unittest.TestCase):
     def test_framing(self):
@@ -17,9 +17,7 @@ class TestFramer(unittest.TestCase):
             got = arghdlc.Framer.frame(buf, arghdlc.FrameAddress.DEVICE, 0)
             self.assertEqual(expected, got, f'Case {i}')
             self.assertEqual(expected_len, len(got), f'Case {i}')
-
         
-        self.assertTrue(True)
 
 class TestDeframer(unittest.TestCase):
     def test_foo(self):
@@ -57,6 +55,44 @@ class TestDeframer(unittest.TestCase):
             self.assertEqual(expected_pkt_interrupts, n_interrupted, f'Case {i}')  # TODO actually support these
             
             self.assertEqual(buf, got_frame.payload, f'Case {i}')
+
+
+    def test_roundtrip(self):
+        loglevel = 10
+        msg = "hi mom"
+        
+        packet = argali_packet_pb2.argali_packet()
+        packet.payload_type = packet.LOGLINE_PKT
+        packet.logline.level = loglevel
+        packet.logline.content = msg
+        
+        encoded = packet.SerializeToString()
+
+        framed = arghdlc.Framer.frame(encoded)
+
+        got_frame = None
+        got_content = None
+        got_level = None
+        def _cb(f):
+            nonlocal got_frame
+            nonlocal got_content, got_level
+            got_frame = f
+            got_buf = None
+            ll2 = argali_packet_pb2.argali_packet()
+            ll2.ParseFromString(f.payload)
+            got_level = ll2.logline.level
+            got_content = ll2.logline.content
+
+
+        deframer = arghdlc.Deframer(_cb)
+
+        deframer.rx(framed)
+
+
+        self.assertEqual(msg, got_content)
+        self.assertEqual(loglevel, got_level)
+
+        
 
 if __name__ == '__main__':
     unittest.main()
