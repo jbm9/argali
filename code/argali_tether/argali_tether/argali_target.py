@@ -1,12 +1,11 @@
 import argparse
 from typing import List, Tuple
+import time
 
 import serial
 import serial.tools.list_ports
 
 from .arghdlc import Framer, Deframer
-
-import packets.argali_packet_pb2 as argali_packet_pb2
 
 class ArgaliTarget:
     '''A tethered Argali device, intended for your EOL station

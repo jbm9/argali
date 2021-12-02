@@ -89,6 +89,8 @@ static  adc_config_t adc_config = {
                                    .channels = {0},
                                    .double_buffer = 1,
                                    .sample_width = 1,
+                                   .adcclk_prescaler = 2,
+                                   .adc_sample_time = 112,
                                    .cb = dtmf_process,
 };
 

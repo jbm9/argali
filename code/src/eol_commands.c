@@ -225,18 +225,20 @@ void eol_command_handle(uint8_t *payload, uint16_t payload_len,
       // uint8_t scale: divisor for amplitude of sine wave as in sin_gen_sin()
       // uint16_t points_per_wave: Number of points in each sine wave
       // uint8_t num_waves: Number of waves to generate in the buffer
+      // uint8_t theta0_u8: Offset of theta0, in 1/256 of a wave steps
       uint16_t prescaler =       get16(cursor); cursor += 2;
       uint32_t period =          get32(cursor); cursor += 4;
       uint8_t scale =                  *cursor; cursor++;
       uint16_t points_per_wave = get16(cursor); cursor += 2;
       uint8_t num_waves =              *cursor; cursor++;
+      uint8_t theta0_u8 =              *cursor; cursor++;
 
       sin_gen_request_t req;
       sin_gen_result_t res;
 
       uint16_t npts = points_per_wave * num_waves;
 
-      console_dumps("DC %d %d %d %d %d", prescaler, period, scale, points_per_wave, num_waves);
+      console_dumps("DC %d %d %d %d %d %d\n", prescaler, period, scale, points_per_wave, num_waves, theta0_u8);
 
       //////////////////////////////////////////////////
       // Fill our sine buffer
@@ -255,7 +257,8 @@ void eol_command_handle(uint8_t *payload, uint16_t payload_len,
                    sin_gen_result_name(res));
         return;
       }
-      req.scale = 2;
+      req.scale = scale;
+      req.theta0 = 4*COS_THETA0/256 * theta0_u8;
 
       res = sin_gen_generate_fill(&req);
       if (SIN_GEN_OKAY != res) {

@@ -28,14 +28,6 @@ PROJECT = $(BUILD_DIR)/$(PROJECT_NAME)
 
 SHARED_DIR = src/
 
-
-# Include the base nanopb makefile
-include external/nanopb/extra/nanopb.mk
-
-# And our local protobuf setup
-include protobufs.mk
-
-
 # Anything that is hardware-specific should be defined in a Makefile
 # snippet for that hardware.  This includes appending things to CFILES
 # that need to be built per-target, such as the drivers for LEDs etc.
