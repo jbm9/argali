@@ -19,11 +19,10 @@ parser.add_argument("--timestamp",
 args = parser.parse_args()
 tgt = ArgaliTarget.from_args(args)
 
-def logline(p):
-    decoded = f'[{p.loglevel.Name(p.level)}] {p.content}' # .decode("iso8859-1")
-    l = decoded
+def logline(f):
+    l = f.payload.decode("iso8859-1")
     if args.timestamp:
-        l = f'{time.strftime("%c")} {decoded}'
+        l = f'{time.strftime("%c")} {l}'
     print(l)
 
 tgt.register_logline_cb(logline)

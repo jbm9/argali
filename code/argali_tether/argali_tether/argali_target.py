@@ -32,7 +32,7 @@ class ArgaliTarget:
         self.adc_buf = bytes()
         
         self.pending_echo = False
-        self.pending_dac = True
+        self.pending_dac = False
         self.pending_adc_bytes = 0
 
         self.last_echo_sent = None
@@ -94,6 +94,7 @@ class ArgaliTarget:
         parser.add_argument("--list-ports", help="List ports", action="store_true", default=False)
         parser.add_argument("--baud",
                             help="Baud rate of serial port (default: 115200)", type=int, default=115200)
+        parser.add_argument("--timeout", help="Timeout for serial reads (default 1s, -1 for None)", type=float, default=1.0)
 
         return parser
 
@@ -139,7 +140,10 @@ class ArgaliTarget:
                 _list_ports()
                 raise
 
-        return ArgaliTarget.serial(port=args.port, baudrate=args.baud)
+        timeout = args.timeout
+        if -1 == timeout:
+            timeout = None
+        return ArgaliTarget.serial(port=args.port, baudrate=args.baud, timeout=timeout)
 
 
     def register_logline_cb(self, cb):
@@ -206,15 +210,7 @@ class ArgaliTarget:
         self.last_bytes = []
 
         c = f.payload[0] if len(f.payload) else ""
-        #print(f'     Got frame: {f.address}/{f.control}: {len(f.payload)} {c}')
-
-
-        packet = argali_packet_pb2.argali_packet()
-        packet.ParseFromString(f.payload)
-
-        if packet.payload_type == packet.LOGLINE_PKT:
-            self.logline_cb(packet.logline)
-            return
+        # print(f'     Got frame: {f.address}/{f.control}: {len(f.payload)} {c}')
 
         if f.address == ord('L'):
             return self._logline(f)
