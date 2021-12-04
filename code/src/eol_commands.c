@@ -333,6 +333,8 @@ void eol_command_handle(uint8_t *payload, uint16_t payload_len,
                                  .double_buffer = 0,
                                  .n_channels = num_channels,
                                  .sample_width = sample_width,
+                                 .adcclk_prescaler = 2,
+                                 .adc_sample_time = 112,
                                  .cb = eol_adc_callback,
       };
 

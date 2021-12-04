@@ -140,6 +140,8 @@ class Deframer:
         is_escape = (b == ord(Framer.ESCAPE))
         is_flag = (b == ord(Framer.FLAG))
 
+        #print(f'rx_byte: state={self.state} acc={len(self.accumulator)} saw_esc={self.saw_escape} is_esc/flag={is_escape}/{is_flag}: b={b}')
+
         if not self.saw_escape and is_escape:
             self.saw_escape = True
             if self.state == DeframerState.IN_BODY:

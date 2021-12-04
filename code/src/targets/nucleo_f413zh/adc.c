@@ -141,17 +141,47 @@ static void adc_setup_gpio(void) {
 /**
  * \brief Configures the ADC peripheral for capture
  *
+ * See the documentation of adc_config_t for details
  */
 static void adc_setup_adc(adc_config_t *adc_config) {
   nvic_enable_irq(NVIC_ADC_IRQ);
 
   adc_power_off(ADC1); // Turn off ADC to configure sampling
 
+  // ADC prescaler documented p338 and p363
+  uint32_t prescaler_val;
+  switch(adc_config->adcclk_prescaler) {
+  case 8: prescaler_val = ADC_CCR_ADCPRE_BY8; break;
+  case 6: prescaler_val = ADC_CCR_ADCPRE_BY6; break;
+  case 4: prescaler_val = ADC_CCR_ADCPRE_BY4; break;
+  default:
+    // \todo log something here
+    // fallthrough to a default of /2
+  case 2: prescaler_val = ADC_CCR_ADCPRE_BY2; break;
+  }
+  adc_set_clk_prescale(prescaler_val);
+
+  // We don't support all resolutions yet
   uint32_t resolution = (adc_config->sample_width == 1 ?
                          ADC_CR1_RES_8BIT : ADC_CR1_RES_12BIT);
-
   adc_set_resolution(ADC1, resolution);
-  adc_set_sample_time_on_all_channels(ADC1, ADC_SMPR_SMP_112CYC);
+
+  // Sampling time is explained in RM0430r8 13.5, p344
+  uint32_t sample_time_value;
+  switch (adc_config->adc_sample_time) {
+  case  15: sample_time_value = ADC_SMPR_SMP_15CYC; break;
+  case  28: sample_time_value = ADC_SMPR_SMP_28CYC; break;
+  case  56: sample_time_value = ADC_SMPR_SMP_56CYC; break;
+  case  84: sample_time_value = ADC_SMPR_SMP_84CYC; break;
+  case 112: sample_time_value = ADC_SMPR_SMP_112CYC; break;
+  case 144: sample_time_value = ADC_SMPR_SMP_144CYC; break;
+  case 480: sample_time_value = ADC_SMPR_SMP_480CYC; break;
+  default:
+    // \todo log invalid adc_sample_time inputs
+  case 3: sample_time_value = ADC_SMPR_SMP_3CYC; break;
+  }
+  adc_set_sample_time_on_all_channels(ADC1, sample_time_value);
+
   if (adc_config->double_buffer)
     adc_set_dma_continue(ADC1);
 
@@ -306,15 +336,54 @@ float adc_setup(adc_config_t *adc_config) {
   // sideways.
   adc_enable_overrun_interrupt(ADC1);
 
-  return adc_get_sample_rate(adc_config->prescaler, adc_config->period);
+  return adc_get_sample_rate();
 }
 
+/**
+ * Get the ADC sampling rate under the current configuration
+ *
+ * This returns the sample rate in samples per second of the
+ * currently-loaded configuration, using the current system clocks.
+ * Its results are invalid if any of those things changes.  If you
+ * want to use this value, make sure to fetch it around the time you
+ * configure the ADC, or something else may disturb the settings and
+ * change the expected result.
+ *
+ * \todo Use the EOL tethering code to verify our understanding of
+ * these divisors.
+ */
+float adc_get_sample_rate(void) {
 
-float adc_get_sample_rate(uint16_t prescaler, uint32_t period) {
   uint32_t ck_in = rcc_get_timer_clk_freq(TIM3);
-  return (ck_in/2)/(prescaler+1)/(period+1);
+  return (ck_in/2)/(saved_adc_config.prescaler+1)/(saved_adc_config.period+1);
 }
 
+/**
+ * Get the time between channel reads in a burst, in seconds
+ *
+ * Note that this is within a single trigger of the scan mode, and is
+ * unrelated to the triggering sample rate.  To know what sample rate
+ * your data stream is coming in at, use adc_get_sample_rate().
+ *
+ * This returns the time between channels under the currently-loaded
+ * configuration, using the current system clocks.  Its results are
+ * invalid if any of those things changes.  If you want to use this
+ * value, make sure to fetch it around the time you configure the ADC,
+ * or something else may disturb the settings and change the expected
+ * result.
+ */
+float adc_get_interchannel_time(void) {
+  float nbits;
+  float result = saved_adc_config.adc_sample_time;
+
+  nbits = saved_adc_config.sample_width == 1 ? 8 : 12;
+  result += nbits;
+
+  result *= saved_adc_config.adcclk_prescaler;
+  result /= rcc_apb2_frequency;
+
+  return result;
+}
 
 //////////////////////////////////////////////////////////////////////
 // ISRs

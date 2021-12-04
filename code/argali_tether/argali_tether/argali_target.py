@@ -202,6 +202,9 @@ class ArgaliTarget:
         else:
             self.tx(b'~' * 1)
 
+    def queue_packet(self, p):
+        self.enqueue(Framer.frame(p.pack()))
+
     def enqueue(self, f):
         #print(f'Enqueueing frame: {f}')
         self.pending_frames.append(f)

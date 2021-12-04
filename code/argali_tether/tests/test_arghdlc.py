@@ -2,7 +2,7 @@
 
 import unittest
 
-from context import arghdlc, argali_packet_pb2
+from context import arghdlc
 
 class TestFramer(unittest.TestCase):
     def test_framing(self):
@@ -61,36 +61,22 @@ class TestDeframer(unittest.TestCase):
         loglevel = 10
         msg = "hi mom"
         
-        packet = argali_packet_pb2.argali_packet()
-        packet.payload_type = packet.LOGLINE_PKT
-        packet.logline.level = loglevel
-        packet.logline.content = msg
-        
-        encoded = packet.SerializeToString()
-
-        framed = arghdlc.Framer.frame(encoded)
+        framed = arghdlc.Framer.frame(msg.encode('ISO8859-1'))
 
         got_frame = None
         got_content = None
-        got_level = None
         def _cb(f):
             nonlocal got_frame
-            nonlocal got_content, got_level
+            nonlocal got_content
             got_frame = f
-            got_buf = None
-            ll2 = argali_packet_pb2.argali_packet()
-            ll2.ParseFromString(f.payload)
-            got_level = ll2.logline.level
-            got_content = ll2.logline.content
+            got_content = f.payload.decode("ISO8859-1")
 
 
         deframer = arghdlc.Deframer(_cb)
 
         deframer.rx(framed)
 
-
         self.assertEqual(msg, got_content)
-        self.assertEqual(loglevel, got_level)
 
         
 
