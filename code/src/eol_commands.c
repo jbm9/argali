@@ -95,6 +95,7 @@ static uint16_t get16(uint8_t *c) {
 
 
 static void xmit_ack(uint8_t family, uint8_t subtype, char *fmt, ...) {
+  return;
   uint16_t buflen;
 
   // We'll vsnprintf() into our buffer a bit, then slip the constants
@@ -147,9 +148,13 @@ static void xmit_unk(uint8_t family, uint8_t subtype) {
 
 static void eol_adc_callback(const uint8_t *buf, uint16_t buflen) {
   uint16_t len_to_send;
-  adc_stop();
+  uint16_t ptsrem = adc_stop();
 
   const uint16_t stride = XMITBUFLEN / 4;
+
+  if (0 != ptsrem) {
+    console_dumps("EOLADC nzpr: %d\n", ptsrem);
+  }
 
   for (const uint8_t *c = buf; c < buf+buflen; c += stride) {
     len_to_send = stride;
@@ -316,6 +321,7 @@ void eol_command_handle(uint8_t *payload, uint16_t payload_len,
       uint32_t period =          get32(cursor); cursor += 4;
       uint16_t num_points =      get16(cursor); cursor += 2;
       uint8_t sample_width =           *cursor; cursor++;
+      uint16_t sample_time =     get16(cursor); cursor += 2;
       uint8_t num_channels =           *cursor; cursor++;
 
       uint16_t buflen = num_points * sample_width * num_channels;
@@ -334,12 +340,12 @@ void eol_command_handle(uint8_t *payload, uint16_t payload_len,
                                  .n_channels = num_channels,
                                  .sample_width = sample_width,
                                  .adcclk_prescaler = 2,
-                                 .adc_sample_time = 112,
+                                 .adc_sample_time = sample_time,
                                  .cb = eol_adc_callback,
       };
 
-      console_dumps("AC ps=%d pd=%d np=%d sw=%d nc=%d bl=%d\n",
-                    prescaler, period, num_points, sample_width, num_channels, buflen);
+      console_dumps("AC ps=%d pd=%ld np=%d sw=%d st=%d nc=%d bl=%d: \n",
+                   prescaler, period, num_points, sample_width, sample_time, num_channels, buflen);
 
       for (int i = 0; i < num_channels; i++) {
         adc_config.channels[i] = *cursor; cursor++;

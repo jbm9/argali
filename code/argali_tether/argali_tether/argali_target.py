@@ -1,6 +1,8 @@
 import argparse
 from typing import List, Tuple
 import time
+import sys
+
 
 import serial
 import serial.tools.list_ports
@@ -301,7 +303,7 @@ class ArgaliTarget:
         self.pending_dac = True
 
     def _dac_rx(self, f):
-        print(f'Got DAC reply')
+        # print(f'Got DAC reply')
         self.pending_dac = False
 
     def set_adc_cb(self, cb):
@@ -325,7 +327,7 @@ class ArgaliTarget:
         if qr == ord("C"):
             self.adc_buf += payload[2:]
             self.pending_adc_bytes -= (len(payload)-2)
-            print(f'Got ADC Data: ({self.pending_adc_bytes} after this)')
+            # print(f'Got ADC Data: ({self.pending_adc_bytes} after this)')
 
             if self.pending_adc_bytes == 0:
                 if self.adc_cb:

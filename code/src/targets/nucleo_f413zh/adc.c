@@ -135,6 +135,11 @@ static void adc_setup_gpio(void) {
 
   // PA2 -- CN10.11
   gpio_mode_setup(GPIOA, GPIO_MODE_ANALOG, GPIO_PUPD_NONE, GPIO2);
+
+  // PA6 -- CN9.12
+  gpio_mode_setup(GPIOA, GPIO_MODE_ANALOG, GPIO_PUPD_NONE, GPIO6);
+  // PA7 -- CN9.14
+  gpio_mode_setup(GPIOA, GPIO_MODE_ANALOG, GPIO_PUPD_NONE, GPIO7);
 }
 
 

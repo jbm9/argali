@@ -15,6 +15,7 @@ from argali_tether.packets import *
 parser = ArgaliTarget.argparser()
 
 parser.add_argument("--request", help="Request readings from the ADC", action="store_true")
+parser.add_argument("-q", help="Don't show the offsets, just return a blob of hex", action="store_true")
 
 ADCConfigPacket.add_arguments(parser)
 
@@ -29,7 +30,8 @@ def logline(f):
 
 def adc_cb(buf):
     for i in range(0, len(buf), 16):
-        print(f'{i:4d}: {buf[i:i+16].hex()}')
+        prefix = "" if args.q else f'{i:4d}: '
+        print(f'{prefix}{buf[i:i+16].hex()}')
     
     
 tgt.register_logline_cb(logline)
@@ -45,6 +47,7 @@ else:
 
 tgt.pending_adc_bytes = pkt.num_points * pkt.sample_width * len(pkt.channels)
 tgt.queue_packet(pkt)
-while True:
+
+while tgt.pending_adc_bytes > 0:
     tgt.poll()
     time.sleep(0.01)

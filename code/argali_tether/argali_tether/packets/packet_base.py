@@ -173,6 +173,11 @@ class PacketField:
         else:
             parser.add_argument(f"--{self.fname}", type=argtypes[self.ftype],
                                 action="append", nargs="+")
+    def __str__(self):
+        return f"{self.fname}: {self.ftype} / {self.length if self.length else 'array'}"
+
+    def __repr__(self):
+        return self.__str__()
 
     
 class PacketBase:
@@ -200,7 +205,7 @@ class PacketBase:
             pack_str += pf.pack_str(value) + " "
             pack_vals.extend(pf.pack_vals(value))
 
-        print(f'{pack_str}: {pack_vals}')
+        # print(f'{pack_str}: {pack_vals}')
         return struct.pack(pack_str, *pack_vals)
 
     @classmethod

@@ -71,7 +71,7 @@ typedef enum tone_modem_state {
 static uint8_t dac_buf[DAC_WAVEFORM_LEN]; //!< The waveform to emit when bored
 static float dac_sample_rate; //!< The sampling rate of the DAC
 
-#define ADC_NUM_SAMPLES 400 //!< Number of samples to capture, Double-buffer means this gets halved
+#define ADC_NUM_SAMPLES 2048 //!< Number of samples to capture, Double-buffer means this gets halved
 static uint8_t adc_buf[ADC_NUM_SAMPLES];
 static float adc_sample_rate; //!< The sampling rate of the ADC
 

@@ -32,13 +32,27 @@ def logline(f):
 
 tgt.register_logline_cb(logline)
 
+was_valid = False
+
+if args.stop:
+    pkt = DACStopPacket()
+    was_valid = True
+    tgt.queue_packet(pkt)
+    tgt.poll()
+
+if args.configure:
+    pkt = DACConfigPacket.from_args(args)
+    was_valid = True    
+    tgt.queue_packet(pkt)
+    tgt.poll()
+
 if args.start:
     pkt = DACStartPacket()
-elif args.stop:
-    pkt = DACStopPacket()
-elif args.configure:
-    pkt = DACConfigPacket.from_args(args)
-else:
+    was_valid = True    
+    tgt.queue_packet(pkt)
+    tgt.poll()
+    
+if not was_valid:
     print("Need one of --start,--stop, or --configure (with its args)")
     sys.exit(1)
 

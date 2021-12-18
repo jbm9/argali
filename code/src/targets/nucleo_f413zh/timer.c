@@ -52,6 +52,14 @@
  *
  * RCC_DCKCFGR1 is on pp177&8, 6.3.27.
  *
+ * This references PPREx, which is PPRE2 here, p134.
+ *
+ * HPRE is on p135
+ *
+ * The default is HPRE=0, so AHB undivided, and PPRE2=0, AHB
+ * undivided.  Default of TIMPRE is 0, so timer clock is driven by
+ * HPRE, and is just the system clock.
+ *
  * Note that libopencm3 provides rcc_get_timer_clk_freq(), which
  * manages all of the computation to figure out what your timer is
  * clocked to, including the system clock.  The system clock speed is

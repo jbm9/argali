@@ -121,11 +121,14 @@ begin with it framed thusly.
 
 Port A is used as follows:
 
-| Pin  | Subsystem | Notes                   |
-|------|-----------|-------------------------|
-| PA0  | ADC       | ADC Input  (CN10.29)    |
-| PA2  | ADC       | ADC Input  (CN10.11)    |
-| PA4  | DAC       | DAC Output (CN7.17)     |
+| Pin | Subsystem | Notes                |
+|-----|-----------|----------------------|
+| PA0 | ADC       | ADC Input  (CN10.29) |
+| PA2 | ADC       | ADC Input  (CN10.11) |
+| PA4 | DAC       | DAC Output (CN7.17)  |
+| PA6 | ADC       | ADC Input  (CN7.12)  |
+| PA7 | ADC       | ADC Input  (CN7.14)  |
+
 
 
 #### GPIOB
