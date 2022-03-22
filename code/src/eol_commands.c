@@ -351,6 +351,12 @@ void eol_command_handle(uint8_t *payload, uint16_t payload_len,
         adc_config.channels[i] = *cursor; cursor++;
       }
 
+      // Explicitly stop the ADC and reset its state
+      adc_stop();
+      // Clear buffer
+      memset(eol_adc_buf, 0xFF, buflen);
+
+      // Now set up and start running
       adc_setup(&adc_config);
       adc_start();
     }

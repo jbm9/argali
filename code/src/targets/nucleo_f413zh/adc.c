@@ -452,7 +452,8 @@ void adc_isr(void) {
   led_green_toggle();
     adc_clear_overrun_flag(ADC1);
     if (saved_adc_config.double_buffer) {
-      adc_start_conversion_regular(ADC1);
+      if (!ADC_CR2(adc) & ADC_CR2_SWSTART)  // Check if we're already started
+        adc_start_conversion_regular(ADC1);
     }
   }
 }
